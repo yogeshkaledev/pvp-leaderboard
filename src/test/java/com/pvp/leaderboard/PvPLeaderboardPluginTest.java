@@ -1,13 +1,13 @@
-package com.example;
+package com.pvp.leaderboard;
 
 import net.runelite.client.RuneLite;
 import net.runelite.client.externalplugins.ExternalPluginManager;
 
-public class ExamplePluginTest
+public class PvPLeaderboardPluginTest
 {
 	public static void main(String[] args) throws Exception
 	{
-		ExternalPluginManager.loadBuiltin(ExamplePlugin.class);
+		ExternalPluginManager.loadBuiltin(PvPLeaderboardPlugin.class);
 		RuneLite.main(args);
 	}
 }
