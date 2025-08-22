@@ -46,7 +46,7 @@ public class PvPLeaderboardPlugin extends Plugin
 	@Override
 	protected void startUp() throws Exception
 	{
-		dashboardPanel = new DashboardPanel();
+		dashboardPanel = new DashboardPanel(config);
 		
 		final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/util/clue_arrow.png");
 		navButton = NavigationButton.builder()

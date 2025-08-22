@@ -28,4 +28,6 @@ public interface PvPLeaderboardConfig extends Config
 	{
 		return 12;
 	}
+
+
 }
