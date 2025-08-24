@@ -45,6 +45,11 @@ public class DashboardPanel extends PluginPanel
     private JLabel highestRankTimeLabel;
     private JLabel lowestRankLabel;
     private JLabel lowestRankTimeLabel;
+    private JPanel tierGraphPanel;
+    private String selectedBucket = "overall";
+    private java.util.List<Double> tierHistory = new java.util.ArrayList<>();
+    private JsonArray allMatches = null;
+    private JButton[] bucketButtons = new JButton[5];
 
     private PvPLeaderboardConfig config;
     
@@ -247,6 +252,51 @@ public class DashboardPanel extends PluginPanel
         statsPanel.add(lowestRank);
         
         additionalStatsPanel.add(statsPanel);
+        additionalStatsPanel.add(Box.createVerticalStrut(16));
+        
+        // Tier Graph Section
+        JPanel tierSection = new JPanel();
+        tierSection.setLayout(new BoxLayout(tierSection, BoxLayout.Y_AXIS));
+        
+        // Create container with header and graph in same scrollable area
+        JPanel graphContainer = new JPanel();
+        graphContainer.setLayout(new BoxLayout(graphContainer, BoxLayout.Y_AXIS));
+        
+        JPanel tierHeader = new JPanel(new BorderLayout());
+        tierHeader.add(new JLabel("Tier Graph"), BorderLayout.WEST);
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        String[] buckets = {"Overall", "NH", "Veng", "Multi", "DMM"};
+        for (int i = 0; i < buckets.length; i++) {
+            String bucket = buckets[i];
+            JButton btn = new JButton(bucket);
+            btn.setPreferredSize(new Dimension(60, 24));
+            btn.addActionListener(e -> {
+                selectedBucket = bucket.toLowerCase();
+                updateBucketButtonStates(bucket);
+                if (allMatches != null) {
+                    updateTierGraph(allMatches);
+                }
+            });
+            bucketButtons[i] = btn;
+            buttonPanel.add(btn);
+        }
+        updateBucketButtonStates("Overall");
+        tierHeader.add(buttonPanel, BorderLayout.EAST);
+        
+        graphContainer.add(tierHeader);
+        graphContainer.add(Box.createVerticalStrut(8));
+        
+        tierGraphPanel = createTierGraph();
+        graphContainer.add(tierGraphPanel);
+        
+        JScrollPane tierScrollPane = new JScrollPane(graphContainer);
+        tierScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
+        tierScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        tierScrollPane.setPreferredSize(new Dimension(0, 320));
+        tierSection.add(tierScrollPane);
+        
+        additionalStatsPanel.add(tierSection);
         return additionalStatsPanel;
     }
     
@@ -366,6 +416,7 @@ public class DashboardPanel extends PluginPanel
                         
                         // Update additional stats if logged in
                         if (isLoggedIn) {
+                            allMatches = matches;
                             updateAdditionalStats(matches);
                         }
                     });
@@ -686,6 +737,9 @@ public class DashboardPanel extends PluginPanel
         highestRankTimeLabel.setText(highestTime != null ? highestTime : "-");
         lowestRankLabel.setText(lowestRankLostTo != null ? lowestRankLostTo : "-");
         lowestRankTimeLabel.setText(lowestTime != null ? lowestTime : "-");
+        
+        // Update tier graph
+        updateTierGraph(matches);
     }
     
     private boolean isHigherRank(String rank1, String rank2)
@@ -739,6 +793,170 @@ public class DashboardPanel extends PluginPanel
         }
         
         return baseOrder * 10 + (4 - division);
+    }
+    
+    private JPanel createTierGraph()
+    {
+        JPanel panel = new JPanel()
+        {
+            @Override
+            protected void paintComponent(Graphics g)
+            {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g;
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                
+                int width = getWidth() - 40;
+                int height = getHeight() - 40;
+                
+                if (width <= 0 || height <= 0) return;
+                
+                // Draw axes
+                g2.setColor(Color.LIGHT_GRAY);
+                g2.drawLine(20, height + 20, width + 20, height + 20);
+                g2.drawLine(20, 20, 20, height + 20);
+                
+                // Draw tier lines and labels
+                String[] tiers = {"Bronze", "Iron", "Steel", "Black", "Mithril", "Adamant", "Rune", "Dragon", "3rd Age"};
+                Color[] tierColors = {
+                    new Color(184, 115, 51), new Color(192, 192, 192), new Color(154, 162, 166),
+                    new Color(46, 46, 46), new Color(59, 167, 214), new Color(26, 139, 111),
+                    new Color(78, 159, 227), new Color(229, 57, 53), new Color(229, 193, 0)
+                };
+                
+                for (int i = 0; i < tiers.length; i++)
+                {
+                    int y = 20 + (i * height / tiers.length);
+                    g2.setColor(tierColors[i]);
+                    g2.drawLine(20, y, width + 20, y);
+                    g2.drawString(tiers[tiers.length - 1 - i], 2, y + 5);
+                }
+                
+                // Draw X-axis labels (match numbers) - show every ~50th match for 500+ matches
+                if (tierHistory.size() > 1)
+                {
+                    g2.setColor(Color.WHITE);
+                    int totalMatches = tierHistory.size();
+                    int labelInterval = Math.max(1, totalMatches / 8); // Show ~8 labels max
+                    
+                    for (int i = 0; i < totalMatches; i += labelInterval)
+                    {
+                        int x = 20 + (i * width / Math.max(1, totalMatches - 1));
+                        int matchNum = totalMatches - i; // Reverse order (most recent first)
+                        g2.drawString("#" + matchNum, x - 10, height + 35);
+                    }
+                    
+                    // Draw tier progression line
+                    g2.setColor(Color.WHITE);
+                    g2.setStroke(new BasicStroke(2));
+                    for (int i = 0; i < tierHistory.size() - 1; i++)
+                    {
+                        int x1 = 20 + (i * width / Math.max(1, tierHistory.size() - 1));
+                        int y1 = height + 20 - (int)(tierHistory.get(i) * height / 100);
+                        int x2 = 20 + ((i + 1) * width / Math.max(1, tierHistory.size() - 1));
+                        int y2 = height + 20 - (int)(tierHistory.get(i + 1) * height / 100);
+                        g2.drawLine(x1, y1, x2, y2);
+                    }
+                }
+                else
+                {
+                    g2.setColor(Color.GRAY);
+                    g2.drawString("No tier data available", width / 2 - 60, height / 2);
+                }
+            }
+        };
+        panel.setPreferredSize(new Dimension(Math.max(800, tierHistory.size() * 2), 260));
+        return panel;
+    }
+    
+    private void updateTierGraph(JsonArray matches)
+    {
+        java.util.List<Double> tierData = new java.util.ArrayList<>();
+        
+        // Sort matches by timestamp for proper chronological order
+        java.util.List<JsonObject> sortedMatches = new java.util.ArrayList<>();
+        for (int i = 0; i < matches.size(); i++)
+        {
+            sortedMatches.add(matches.get(i).getAsJsonObject());
+        }
+        sortedMatches.sort((a, b) -> {
+            long timeA = a.has("when") ? a.get("when").getAsLong() : 0;
+            long timeB = b.has("when") ? b.get("when").getAsLong() : 0;
+            return Long.compare(timeA, timeB);
+        });
+        
+        // Cap at 500 matches maximum
+        int maxMatches = Math.min(500, sortedMatches.size());
+        
+        for (int i = 0; i < maxMatches; i++)
+        {
+            JsonObject match = sortedMatches.get(i);
+            String bucket = match.has("bucket") ? match.get("bucket").getAsString().toLowerCase() : "";
+            
+            if (selectedBucket.equals("overall") || selectedBucket.equals(bucket))
+            {
+                if (match.has("player_mmr"))
+                {
+                    double mmr = match.get("player_mmr").getAsDouble();
+                    double tierValue = calculateTierValue(mmr);
+                    tierData.add(tierValue);
+                }
+            }
+        }
+        
+        tierHistory = tierData;
+        updateTierGraphDisplay();
+    }
+    
+    private void updateTierGraphDisplay()
+    {
+        if (tierGraphPanel != null)
+        {
+            // Update panel size for horizontal scrolling
+            tierGraphPanel.setPreferredSize(new Dimension(Math.max(800, tierHistory.size() * 2), 260));
+            tierGraphPanel.getParent().setPreferredSize(new Dimension(Math.max(800, tierHistory.size() * 2), 300));
+            tierGraphPanel.revalidate();
+            tierGraphPanel.repaint();
+        }
+    }
+    
+    private double calculateTierValue(double mmr)
+    {
+        String[][] thresholds = {
+            {"Bronze", "3", "0"}, {"Bronze", "2", "170"}, {"Bronze", "1", "240"},
+            {"Iron", "3", "310"}, {"Iron", "2", "380"}, {"Iron", "1", "450"},
+            {"Steel", "3", "520"}, {"Steel", "2", "590"}, {"Steel", "1", "660"},
+            {"Black", "3", "730"}, {"Black", "2", "800"}, {"Black", "1", "870"},
+            {"Mithril", "3", "940"}, {"Mithril", "2", "1010"}, {"Mithril", "1", "1080"},
+            {"Adamant", "3", "1150"}, {"Adamant", "2", "1250"}, {"Adamant", "1", "1350"},
+            {"Rune", "3", "1450"}, {"Rune", "2", "1550"}, {"Rune", "1", "1650"},
+            {"Dragon", "3", "1750"}, {"Dragon", "2", "1850"}, {"Dragon", "1", "1950"},
+            {"3rd Age", "0", "2100"}
+        };
+        
+        String[] current = thresholds[0];
+        for (String[] threshold : thresholds)
+        {
+            if (mmr >= Double.parseDouble(threshold[2]))
+            {
+                current = threshold;
+            }
+            else
+            {
+                break;
+            }
+        }
+        
+        // Convert to percentage for graph display
+        String[] tiers = {"Bronze", "Iron", "Steel", "Black", "Mithril", "Adamant", "Rune", "Dragon", "3rd Age"};
+        for (int i = 0; i < tiers.length; i++)
+        {
+            if (tiers[i].equals(current[0]))
+            {
+                return (i * 100.0 / tiers.length) + (Integer.parseInt(current[1]) * 10.0 / tiers.length);
+            }
+        }
+        return 0;
     }
     
     private void clearTokens()
@@ -880,6 +1098,39 @@ public class DashboardPanel extends PluginPanel
                     lowestRankTimeLabel.setText("Live tracking");
                 }
             });
+        }
+    }
+    
+    public void updateTierGraphRealTime(String bucket, double mmr)
+    {
+        if (isLoggedIn && (selectedBucket.equals("overall") || selectedBucket.equals(bucket.toLowerCase())))
+        {
+            SwingUtilities.invokeLater(() -> {
+                double tierValue = calculateTierValue(mmr);
+                tierHistory.add(tierValue);
+                
+                // Keep only last 500 points for performance
+                if (tierHistory.size() > 500)
+                {
+                    tierHistory = tierHistory.subList(tierHistory.size() - 500, tierHistory.size());
+                }
+                
+                updateTierGraphDisplay();
+            });
+        }
+    }
+    
+    private void updateBucketButtonStates(String activeBucket)
+    {
+        String[] buckets = {"Overall", "NH", "Veng", "Multi", "DMM"};
+        for (int i = 0; i < bucketButtons.length; i++)
+        {
+            if (bucketButtons[i] != null)
+            {
+                boolean isActive = buckets[i].equals(activeBucket);
+                bucketButtons[i].setEnabled(!isActive);
+                bucketButtons[i].setBackground(isActive ? Color.DARK_GRAY : null);
+            }
         }
     }
     

@@ -136,6 +136,8 @@ public class PvPLeaderboardPlugin extends Plugin
 		{
 			boolean playerWon = localPlayer.getHealthRatio() > 0;
 			String opponentRank = getPlayerRank(opponent);
+			String bucket = determineBucket();
+			double currentMMR = estimateCurrentMMR();
 			
 			if (playerWon)
 			{
@@ -144,6 +146,12 @@ public class PvPLeaderboardPlugin extends Plugin
 			else
 			{
 				updateLowestRankLostTo(opponentRank);
+			}
+			
+			// Update tier graph with real-time data
+			if (dashboardPanel != null)
+			{
+				dashboardPanel.updateTierGraphRealTime(bucket, currentMMR);
 			}
 		}
 		
@@ -269,6 +277,28 @@ public class PvPLeaderboardPlugin extends Plugin
 	public String getLowestRankLostTo()
 	{
 		return lowestRankLostTo;
+	}
+	
+	private String determineBucket()
+	{
+		// Determine bucket based on spellbook and multi area
+		if (wasInMulti)
+		{
+			return "multi";
+		}
+		
+		if (fightStartSpellbook == 1) // Lunar spellbook
+		{
+			return "veng";
+		}
+		
+		return "nh"; // Default to NH
+	}
+	
+	private double estimateCurrentMMR()
+	{
+		// Simplified MMR estimation - in real implementation would track actual MMR
+		return 1000.0; // Placeholder
 	}
 
 	@Provides
