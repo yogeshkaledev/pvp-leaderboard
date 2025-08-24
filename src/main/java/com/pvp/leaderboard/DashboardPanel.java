@@ -38,6 +38,8 @@ public class DashboardPanel extends PluginPanel
     private JPanel chartPanel;
     private java.util.List<Double> winRateHistory = new java.util.ArrayList<>();
     private JPanel additionalStatsPanel;
+    private DefaultTableModel rankBreakdownModel;
+    private JTable rankBreakdownTable;
     private boolean isLoggedIn = false;
     private String idToken = null;
     private String accessToken = null;
@@ -212,12 +214,16 @@ public class DashboardPanel extends PluginPanel
         // Win rate chart
         chartPanel = createWinRateChart();
         contentPanel.add(chartPanel);
+        contentPanel.add(Box.createVerticalStrut(16));
+        
+        // Rank breakdown table
+        contentPanel.add(createRankBreakdownTable());
         
         JScrollPane scrollPane = new JScrollPane(contentPanel);
         scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
         scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         scrollPane.setBorder(null);
-        scrollPane.setPreferredSize(new Dimension(0, 300));
+        scrollPane.setPreferredSize(new Dimension(0, 500));
         
         mainPanel.add(scrollPane);
         return mainPanel;
@@ -413,6 +419,7 @@ public class DashboardPanel extends PluginPanel
                         
                         updatePerformanceStats(wins, losses, ties);
                         updateWinRateChart(matches);
+                        updateRankBreakdown(matches);
                         
                         // Update additional stats if logged in
                         if (isLoggedIn) {
@@ -653,6 +660,72 @@ public class DashboardPanel extends PluginPanel
         }
         
         return new RankInfo(rank, division, progress);
+    }
+    
+    private JPanel createRankBreakdownTable()
+    {
+        JPanel panel = new JPanel(new BorderLayout());
+        
+        String[] columns = {"Opponent Tier", "Kills", "Deaths", "KD"};
+        rankBreakdownModel = new DefaultTableModel(columns, 0);
+        rankBreakdownTable = new JTable(rankBreakdownModel);
+        rankBreakdownTable.setFillsViewportHeight(false);
+        rankBreakdownTable.setPreferredScrollableViewportSize(new Dimension(0, 150));
+        
+        JScrollPane scrollPane = new JScrollPane(rankBreakdownTable);
+        scrollPane.setPreferredSize(new Dimension(0, 150));
+        panel.add(scrollPane, BorderLayout.CENTER);
+        
+        return panel;
+    }
+    
+    private void updateRankBreakdown(JsonArray matches)
+    {
+        if (rankBreakdownModel == null) return;
+        
+        java.util.Map<String, int[]> rankStats = new java.util.HashMap<>();
+        
+        for (int i = 0; i < matches.size(); i++)
+        {
+            JsonObject match = matches.get(i).getAsJsonObject();
+            String result = match.has("result") ? match.get("result").getAsString().toLowerCase() : "";
+            String opponentRank = computeRank(match, "opponent_");
+            
+            if (!rankStats.containsKey(opponentRank))
+            {
+                rankStats.put(opponentRank, new int[]{0, 0}); // [kills, deaths]
+            }
+            
+            int[] stats = rankStats.get(opponentRank);
+            if ("win".equals(result))
+            {
+                stats[0]++; // kills
+            }
+            else if ("loss".equals(result))
+            {
+                stats[1]++; // deaths
+            }
+        }
+        
+        // Sort by rank order (highest tiers first)
+        java.util.List<java.util.Map.Entry<String, int[]>> sortedEntries = new java.util.ArrayList<>(rankStats.entrySet());
+        sortedEntries.sort((a, b) -> {
+            int orderA = getRankOrder(a.getKey());
+            int orderB = getRankOrder(b.getKey());
+            return Integer.compare(orderB, orderA); // Descending order (highest first)
+        });
+        
+        rankBreakdownModel.setRowCount(0);
+        for (java.util.Map.Entry<String, int[]> entry : sortedEntries)
+        {
+            String tier = entry.getKey();
+            int[] stats = entry.getValue();
+            int kills = stats[0];
+            int deaths = stats[1];
+            String kd = deaths > 0 ? String.format("%.2f", (double) kills / deaths) : String.valueOf(kills);
+            
+            rankBreakdownModel.addRow(new Object[]{"vs " + tier, kills, deaths, kd});
+        }
     }
     
     private void startTokenPolling()
