@@ -42,6 +42,8 @@ public class PvPLeaderboardPlugin extends Plugin
 	private int fightStartSpellbook = -1;
 	private int fightEndSpellbook = -1;
 	private String opponent = null;
+	private String highestRankDefeated = null;
+	private String lowestRankLostTo = null;
 
 	@Override
 	protected void startUp() throws Exception
@@ -127,6 +129,24 @@ public class PvPLeaderboardPlugin extends Plugin
 	private void endFight()
 	{
 		fightEndSpellbook = client.getVarbitValue(Varbits.SPELLBOOK);
+		
+		// Determine fight outcome and update additional stats
+		Player localPlayer = client.getLocalPlayer();
+		if (localPlayer != null && opponent != null)
+		{
+			boolean playerWon = localPlayer.getHealthRatio() > 0;
+			String opponentRank = getPlayerRank(opponent);
+			
+			if (playerWon)
+			{
+				updateHighestRankDefeated(opponentRank);
+			}
+			else
+			{
+				updateLowestRankLostTo(opponentRank);
+			}
+		}
+		
 		log.info("Fight ended. Multi during fight: " + wasInMulti + ", Start spellbook: " + fightStartSpellbook + ", End spellbook: " + fightEndSpellbook);
 		
 		// Reset fight state
@@ -150,9 +170,105 @@ public class PvPLeaderboardPlugin extends Plugin
 		return "Unknown";
 	}
 
+	private String getPlayerRank(String playerName)
+	{
+		// Simplified rank estimation based on combat level or other factors
+		// In a real implementation, this would query the leaderboard API
+		return "Bronze 3"; // Placeholder
+	}
+	
+	private void updateHighestRankDefeated(String rank)
+	{
+		if (highestRankDefeated == null || isHigherRank(rank, highestRankDefeated))
+		{
+			highestRankDefeated = rank;
+			log.info("New highest rank defeated: " + rank);
+			if (dashboardPanel != null)
+			{
+				dashboardPanel.updateAdditionalStatsFromPlugin(highestRankDefeated, lowestRankLostTo);
+			}
+		}
+	}
+	
+	private void updateLowestRankLostTo(String rank)
+	{
+		if (lowestRankLostTo == null || isLowerRank(rank, lowestRankLostTo))
+		{
+			lowestRankLostTo = rank;
+			log.info("New lowest rank lost to: " + rank);
+			if (dashboardPanel != null)
+			{
+				dashboardPanel.updateAdditionalStatsFromPlugin(highestRankDefeated, lowestRankLostTo);
+			}
+		}
+	}
+	
+	private boolean isHigherRank(String rank1, String rank2)
+	{
+		return getRankOrder(rank1) > getRankOrder(rank2);
+	}
+	
+	private boolean isLowerRank(String rank1, String rank2)
+	{
+		return getRankOrder(rank1) < getRankOrder(rank2);
+	}
+	
+	private int getRankOrder(String rank)
+	{
+		String[] parts = rank.split(" ");
+		String baseName = parts[0];
+		int division = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+		
+		int baseOrder;
+		switch (baseName) {
+			case "Bronze":
+				baseOrder = 0;
+				break;
+			case "Iron":
+				baseOrder = 1;
+				break;
+			case "Steel":
+				baseOrder = 2;
+				break;
+			case "Black":
+				baseOrder = 3;
+				break;
+			case "Mithril":
+				baseOrder = 4;
+				break;
+			case "Adamant":
+				baseOrder = 5;
+				break;
+			case "Rune":
+				baseOrder = 6;
+				break;
+			case "Dragon":
+				baseOrder = 7;
+				break;
+			case "3rd Age":
+				baseOrder = 8;
+				break;
+			default:
+				baseOrder = -1;
+				break;
+		}
+		
+		return baseOrder * 10 + (4 - division); // Higher division = higher order
+	}
+	
 	public long getAccountHash()
 	{
 		return accountHash;
+	}
+	
+	public String getHighestRankDefeated()
+	{
+		return highestRankDefeated;
+	}
+	
+	public String getLowestRankLostTo()
+	{
+		return lowestRankLostTo;
 	}
 
 	@Provides

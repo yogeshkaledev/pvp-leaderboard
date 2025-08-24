@@ -41,6 +41,10 @@ public class DashboardPanel extends PluginPanel
     private boolean isLoggedIn = false;
     private String idToken = null;
     private String accessToken = null;
+    private JLabel highestRankLabel;
+    private JLabel highestRankTimeLabel;
+    private JLabel lowestRankLabel;
+    private JLabel lowestRankTimeLabel;
 
     private PvPLeaderboardConfig config;
     
@@ -226,14 +230,18 @@ public class DashboardPanel extends PluginPanel
         JPanel highestRank = new JPanel();
         highestRank.setLayout(new BoxLayout(highestRank, BoxLayout.Y_AXIS));
         highestRank.add(new JLabel("Highest Rank Defeated"));
-        highestRank.add(new JLabel("Rune 3"));
-        highestRank.add(new JLabel("23/4/2025, 6:59:27 AM"));
+        highestRankLabel = new JLabel("-");
+        highestRankTimeLabel = new JLabel("-");
+        highestRank.add(highestRankLabel);
+        highestRank.add(highestRankTimeLabel);
         
         JPanel lowestRank = new JPanel();
         lowestRank.setLayout(new BoxLayout(lowestRank, BoxLayout.Y_AXIS));
         lowestRank.add(new JLabel("Lowest Rank Lost To"));
-        lowestRank.add(new JLabel("-"));
-        lowestRank.add(new JLabel("-"));
+        lowestRankLabel = new JLabel("-");
+        lowestRankTimeLabel = new JLabel("-");
+        lowestRank.add(lowestRankLabel);
+        lowestRank.add(lowestRankTimeLabel);
         
         statsPanel.add(highestRank);
         statsPanel.add(lowestRank);
@@ -355,6 +363,11 @@ public class DashboardPanel extends PluginPanel
                         
                         updatePerformanceStats(wins, losses, ties);
                         updateWinRateChart(matches);
+                        
+                        // Update additional stats if logged in
+                        if (isLoggedIn) {
+                            updateAdditionalStats(matches);
+                        }
                     });
                 }
                 catch (Exception e)
@@ -637,6 +650,97 @@ public class DashboardPanel extends PluginPanel
         usernameField.setEnabled(false);
     }
     
+    private void updateAdditionalStats(JsonArray matches)
+    {
+        String highestRankDefeated = null;
+        String lowestRankLostTo = null;
+        String highestTime = null;
+        String lowestTime = null;
+        
+        for (int i = 0; i < matches.size(); i++)
+        {
+            JsonObject match = matches.get(i).getAsJsonObject();
+            String result = match.has("result") ? match.get("result").getAsString().toLowerCase() : "";
+            String opponentRank = computeRank(match, "opponent_");
+            String time = match.has("when") ? formatTime(match.get("when").getAsLong()) : "";
+            
+            if ("win".equals(result))
+            {
+                if (highestRankDefeated == null || isHigherRank(opponentRank, highestRankDefeated))
+                {
+                    highestRankDefeated = opponentRank;
+                    highestTime = time;
+                }
+            }
+            else if ("loss".equals(result))
+            {
+                if (lowestRankLostTo == null || isLowerRank(opponentRank, lowestRankLostTo))
+                {
+                    lowestRankLostTo = opponentRank;
+                    lowestTime = time;
+                }
+            }
+        }
+        
+        highestRankLabel.setText(highestRankDefeated != null ? highestRankDefeated : "-");
+        highestRankTimeLabel.setText(highestTime != null ? highestTime : "-");
+        lowestRankLabel.setText(lowestRankLostTo != null ? lowestRankLostTo : "-");
+        lowestRankTimeLabel.setText(lowestTime != null ? lowestTime : "-");
+    }
+    
+    private boolean isHigherRank(String rank1, String rank2)
+    {
+        return getRankOrder(rank1) > getRankOrder(rank2);
+    }
+    
+    private boolean isLowerRank(String rank1, String rank2)
+    {
+        return getRankOrder(rank1) < getRankOrder(rank2);
+    }
+    
+    private int getRankOrder(String rank)
+    {
+        String[] parts = rank.split(" ");
+        String baseName = parts[0];
+        int division = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+        
+        int baseOrder;
+        switch (baseName) {
+            case "Bronze":
+                baseOrder = 0;
+                break;
+            case "Iron":
+                baseOrder = 1;
+                break;
+            case "Steel":
+                baseOrder = 2;
+                break;
+            case "Black":
+                baseOrder = 3;
+                break;
+            case "Mithril":
+                baseOrder = 4;
+                break;
+            case "Adamant":
+                baseOrder = 5;
+                break;
+            case "Rune":
+                baseOrder = 6;
+                break;
+            case "Dragon":
+                baseOrder = 7;
+                break;
+            case "3rd Age":
+                baseOrder = 8;
+                break;
+            default:
+                baseOrder = -1;
+                break;
+        }
+        
+        return baseOrder * 10 + (4 - division);
+    }
+    
     private void clearTokens()
     {
         authService.logout();
@@ -757,6 +861,25 @@ public class DashboardPanel extends PluginPanel
         if (chartPanel != null)
         {
             chartPanel.repaint();
+        }
+    }
+    
+    public void updateAdditionalStatsFromPlugin(String highestRankDefeated, String lowestRankLostTo)
+    {
+        if (isLoggedIn && additionalStatsPanel != null && additionalStatsPanel.isVisible())
+        {
+            SwingUtilities.invokeLater(() -> {
+                if (highestRankDefeated != null)
+                {
+                    highestRankLabel.setText(highestRankDefeated);
+                    highestRankTimeLabel.setText("Live tracking");
+                }
+                if (lowestRankLostTo != null)
+                {
+                    lowestRankLabel.setText(lowestRankLostTo);
+                    lowestRankTimeLabel.setText("Live tracking");
+                }
+            });
         }
     }
     
