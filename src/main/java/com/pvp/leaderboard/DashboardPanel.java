@@ -275,16 +275,24 @@ public class DashboardPanel extends PluginPanel
             return;
         }
         
-        // Open Cognito login in browser with PKCE
+        // Use Cognito OAuth flow
         try
         {
-            // Use the web app's login URL directly (it handles PKCE internally)
-            String cognitoUrl = "https://devsecopsautomated.com/profile.html";
-            
-            java.awt.Desktop.getDesktop().browse(java.net.URI.create(cognitoUrl));
-            
-            // Start polling for callback completion
-            startTokenPolling();
+            CognitoAuthService authService = new CognitoAuthService();
+            authService.login().thenAccept(success -> {
+                if (success) {
+                    SwingUtilities.invokeLater(() -> completeLogin());
+                } else {
+                    SwingUtilities.invokeLater(() -> {
+                        JOptionPane.showMessageDialog(this, "Login failed", "Error", JOptionPane.ERROR_MESSAGE);
+                    });
+                }
+            }).exceptionally(ex -> {
+                SwingUtilities.invokeLater(() -> {
+                    JOptionPane.showMessageDialog(this, "Login error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                });
+                return null;
+            });
         }
         catch (Exception e)
         {
@@ -615,46 +623,10 @@ public class DashboardPanel extends PluginPanel
         return System.currentTimeMillis() % 10000 > 3000;
     }
     
+    private CognitoAuthService authService = new CognitoAuthService();
+    
     private void completeLogin()
     {
-        try
-        {
-            // Read tokens from callback file/endpoint
-            String callbackUrl = "https://devsecopsautomated.com/auth/callback.html";
-            URL url = new URL(callbackUrl);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            
-            if (conn.getResponseCode() == 200)
-            {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null)
-                {
-                    response.append(line);
-                }
-                reader.close();
-                
-                // Parse tokens from response (assuming JSON format)
-                JsonObject tokenResponse = JsonParser.parseString(response.toString()).getAsJsonObject();
-                if (tokenResponse.has("id_token"))
-                {
-                    idToken = tokenResponse.get("id_token").getAsString();
-                }
-                if (tokenResponse.has("access_token"))
-                {
-                    accessToken = tokenResponse.get("access_token").getAsString();
-                }
-            }
-        }
-        catch (Exception e)
-        {
-            // Fallback to demo tokens if callback fails
-            idToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.demo_id_token";
-            accessToken = "demo_access_token_12345";
-        }
-        
         String username = usernameField.getText();
         if (username.isEmpty()) username = "Fx%20Zephrrr";
         
@@ -667,6 +639,7 @@ public class DashboardPanel extends PluginPanel
     
     private void clearTokens()
     {
+        authService.logout();
         idToken = null;
         accessToken = null;
     }
