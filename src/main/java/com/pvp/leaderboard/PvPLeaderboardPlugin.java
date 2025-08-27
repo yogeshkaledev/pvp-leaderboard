@@ -44,6 +44,8 @@ public class PvPLeaderboardPlugin extends Plugin
 	private String opponent = null;
 	private String highestRankDefeated = null;
 	private String lowestRankLostTo = null;
+	private long fightStartTime = 0;
+	private MatchResultService matchResultService = new MatchResultService();
 
 	@Override
 	protected void startUp() throws Exception
@@ -123,18 +125,21 @@ public class PvPLeaderboardPlugin extends Plugin
 		opponent = opponentName;
 		wasInMulti = client.getVarbitValue(Varbits.MULTICOMBAT_AREA) == 1;
 		fightStartSpellbook = client.getVarbitValue(Varbits.SPELLBOOK);
+		fightStartTime = System.currentTimeMillis() / 1000;
 		log.info("Fight started against: " + opponent + ", Multi: " + wasInMulti + ", Spellbook: " + fightStartSpellbook);
 	}
 
 	private void endFight()
 	{
 		fightEndSpellbook = client.getVarbitValue(Varbits.SPELLBOOK);
+		long fightEndTime = System.currentTimeMillis() / 1000;
 		
 		// Determine fight outcome and update additional stats
 		Player localPlayer = client.getLocalPlayer();
 		if (localPlayer != null && opponent != null)
 		{
 			boolean playerWon = localPlayer.getHealthRatio() > 0;
+			String result = playerWon ? "win" : "loss";
 			String opponentRank = getPlayerRank(opponent);
 			String bucket = determineBucket();
 			double currentMMR = estimateCurrentMMR();
@@ -153,6 +158,9 @@ public class PvPLeaderboardPlugin extends Plugin
 			{
 				dashboardPanel.updateTierGraphRealTime(bucket, currentMMR);
 			}
+			
+			// Submit match result to API
+			submitMatchResult(result, fightEndTime);
 		}
 		
 		log.info("Fight ended. Multi during fight: " + wasInMulti + ", Start spellbook: " + fightStartSpellbook + ", End spellbook: " + fightEndSpellbook);
@@ -163,6 +171,7 @@ public class PvPLeaderboardPlugin extends Plugin
 		fightStartSpellbook = -1;
 		fightEndSpellbook = -1;
 		opponent = null;
+		fightStartTime = 0;
 	}
 
 	private String getOpponentName(HitsplatApplied hitsplatApplied)
@@ -299,6 +308,54 @@ public class PvPLeaderboardPlugin extends Plugin
 	{
 		// Simplified MMR estimation - in real implementation would track actual MMR
 		return 1000.0; // Placeholder
+	}
+	
+	private void submitMatchResult(String result, long fightEndTime)
+	{
+		String playerId = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : "Unknown";
+		int world = client.getWorld();
+		String startSpellbook = getSpellbookName(fightStartSpellbook);
+		String endSpellbook = getSpellbookName(fightEndSpellbook);
+		String idToken = dashboardPanel != null ? dashboardPanel.getIdToken() : null;
+		
+		matchResultService.submitMatchResult(
+			playerId,
+			opponent,
+			result,
+			world,
+			fightStartTime,
+			fightEndTime,
+			startSpellbook,
+			endSpellbook,
+			wasInMulti,
+			accountHash,
+			idToken
+		).thenAccept(success -> {
+			if (success) {
+				log.info("Match result submitted successfully");
+			} else {
+				log.warn("Failed to submit match result");
+			}
+		}).exceptionally(ex -> {
+			log.error("Error submitting match result", ex);
+			return null;
+		});
+	}
+	
+	private String getSpellbookName(int spellbook)
+	{
+		switch (spellbook) {
+			case 0:
+				return "Standard";
+			case 1:
+				return "Lunar";
+			case 2:
+				return "Ancient";
+			case 3:
+				return "Arceuus";
+			default:
+				return "Unknown";
+		}
 	}
 
 	@Provides

@@ -1193,6 +1193,11 @@ public class DashboardPanel extends PluginPanel
         }
     }
     
+    public String getIdToken()
+    {
+        return idToken;
+    }
+    
     private void updateBucketButtonStates(String activeBucket)
     {
         String[] buckets = {"Overall", "NH", "Veng", "Multi", "DMM"};

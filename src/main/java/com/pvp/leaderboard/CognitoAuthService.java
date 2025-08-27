@@ -141,6 +141,12 @@ public class CognitoAuthService {
         tokenExpiry = 0;
     }
     
+    public String getStoredIdToken() {
+        // Return access token as ID token for testing
+        // In real implementation, would store and return actual ID token
+        return accessToken;
+    }
+    
     private String generatePKCEVerifier() {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
         SecureRandom random = new SecureRandom();

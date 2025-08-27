@@ -1,0 +1,152 @@
+package com.pvp.leaderboard;
+
+import com.google.gson.JsonObject;
+import lombok.extern.slf4j.Slf4j;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CompletableFuture;
+
+@Slf4j
+public class MatchResultService
+{
+    private static final String API_URL = "https://kekh0x6kfk.execute-api.us-east-1.amazonaws.com/prod/matchresult";
+    private static final String CLIENT_ID = "runelite";
+    private static final String PLUGIN_VERSION = "1.0.0";
+    private static final String RUNELITE_CLIENT_SECRET = "7f2f6a0e-2c6b-4b1d-9a39-6f2b2a8a1f3c"; // Replace with actual secret
+    
+    public CompletableFuture<Boolean> submitMatchResult(
+        String playerId, 
+        String opponentId, 
+        String result, 
+        int world,
+        long fightStartTs,
+        long fightEndTs,
+        String fightStartSpellbook,
+        String fightEndSpellbook,
+        boolean wasInMulti,
+        long accountHash,
+        String idToken)
+    {
+        return CompletableFuture.supplyAsync(() -> {
+            try
+            {
+                JsonObject body = new JsonObject();
+                body.addProperty("player_id", playerId);
+                body.addProperty("opponent_id", opponentId);
+                body.addProperty("result", result);
+                body.addProperty("world", world);
+                body.addProperty("fight_start_ts", fightStartTs);
+                body.addProperty("fight_end_ts", fightEndTs);
+                body.addProperty("fightStartSpellbook", fightStartSpellbook);
+                body.addProperty("fightEndSpellbook", fightEndSpellbook);
+                body.addProperty("wasInMulti", wasInMulti);
+                body.addProperty("client_id", CLIENT_ID);
+                body.addProperty("plugin_version", PLUGIN_VERSION);
+                
+                String bodyJson = body.toString();
+                
+                if (idToken != null && !idToken.isEmpty())
+                {
+                    return submitAuthenticatedFight(bodyJson, accountHash, idToken);
+                }
+                else
+                {
+                    return submitUnauthenticatedFight(bodyJson, accountHash);
+                }
+            }
+            catch (Exception e)
+            {
+                log.error("Failed to submit match result", e);
+                return false;
+            }
+        });
+    }
+    
+    private boolean submitAuthenticatedFight(String body, long accountHash, String idToken) throws Exception
+    {
+        URL url = new URL(API_URL);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+        conn.setRequestProperty("Authorization", "Bearer " + idToken);
+        conn.setRequestProperty("x-account-hash", String.valueOf(accountHash));
+        conn.setDoOutput(true);
+        
+        log.info("=== AUTHENTICATED REQUEST ===");
+        log.info("URL: {}", API_URL);
+        log.info("Method: POST");
+        log.info("Headers:");
+        log.info("  Content-Type: application/json; charset=utf-8");
+        log.info("  Authorization: Bearer {}", idToken);
+        log.info("  x-account-hash: {}", accountHash);
+        log.info("Body: {}", body);
+        
+        try (OutputStream os = conn.getOutputStream())
+        {
+            os.write(body.getBytes(StandardCharsets.UTF_8));
+        }
+        
+        int responseCode = conn.getResponseCode();
+        log.info("Response Code: {}", responseCode);
+        return responseCode >= 200 && responseCode < 300;
+    }
+    
+    private boolean submitUnauthenticatedFight(String body, long accountHash) throws Exception
+    {
+        long timestamp = System.currentTimeMillis() / 1000;
+        String signature = generateSignature(body, timestamp);
+        
+        URL url = new URL(API_URL);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+        conn.setRequestProperty("x-account-hash", String.valueOf(accountHash));
+        conn.setRequestProperty("x-client-id", CLIENT_ID);
+        conn.setRequestProperty("x-timestamp", String.valueOf(timestamp));
+        conn.setRequestProperty("x-signature", signature);
+        conn.setDoOutput(true);
+        
+        log.info("=== UNAUTHENTICATED REQUEST ===");
+        log.info("URL: {}", API_URL);
+        log.info("Method: POST");
+        log.info("Headers:");
+        log.info("  Content-Type: application/json; charset=utf-8");
+        log.info("  x-account-hash: {}", accountHash);
+        log.info("  x-client-id: {}", CLIENT_ID);
+        log.info("  x-timestamp: {}", timestamp);
+        log.info("  x-signature: {}", signature);
+        log.info("Body: {}", body);
+        log.info("Signature Message: POST\n/matchresult\n{}\n{}", body, timestamp);
+        
+        try (OutputStream os = conn.getOutputStream())
+        {
+            os.write(body.getBytes(StandardCharsets.UTF_8));
+        }
+        
+        int responseCode = conn.getResponseCode();
+        log.info("Response Code: {}", responseCode);
+        return responseCode >= 200 && responseCode < 300;
+    }
+    
+    private String generateSignature(String body, long timestamp) throws Exception
+    {
+        String message = "POST\n/matchresult\n" + body + "\n" + timestamp;
+        Mac mac = Mac.getInstance("HmacSHA256");
+        SecretKeySpec secretKey = new SecretKeySpec(RUNELITE_CLIENT_SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        mac.init(secretKey);
+        byte[] hash = mac.doFinal(message.getBytes(StandardCharsets.UTF_8));
+        
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : hash)
+        {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) hexString.append('0');
+            hexString.append(hex);
+        }
+        return hexString.toString();
+    }
+}
