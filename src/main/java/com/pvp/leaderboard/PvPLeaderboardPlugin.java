@@ -45,7 +45,9 @@ public class PvPLeaderboardPlugin extends Plugin
 	private String highestRankDefeated = null;
 	private String lowestRankLostTo = null;
 	private long fightStartTime = 0;
+	private long lastCombatTime = 0;
 	private MatchResultService matchResultService = new MatchResultService();
+	private static final long FIGHT_TIMEOUT_MS = 30000; // 30 seconds
 
 	@Override
 	protected void startUp() throws Exception
@@ -84,6 +86,7 @@ public class PvPLeaderboardPlugin extends Plugin
 	@Subscribe
 	public void onHitsplatApplied(HitsplatApplied hitsplatApplied)
 	{
+		// Only process Player vs Player combat
 		if (hitsplatApplied.getActor() instanceof Player)
 		{
 			Player player = (Player) hitsplatApplied.getActor();
@@ -91,9 +94,17 @@ public class PvPLeaderboardPlugin extends Plugin
 			
 			if (localPlayer != null && (player == localPlayer || hitsplatApplied.getHitsplat().isMine()))
 			{
+				// Update last combat time
+				lastCombatTime = System.currentTimeMillis();
+				
 				if (!inFight)
 				{
-					startFight(player == localPlayer ? getOpponentName(hitsplatApplied) : player.getName());
+					String opponentName = player == localPlayer ? getOpponentName(hitsplatApplied) : player.getName();
+					// Only start fight if opponent is a player (not NPC)
+					if (isPlayerOpponent(opponentName))
+					{
+						startFight(opponentName);
+					}
 				}
 				
 				if (client.getVarbitValue(Varbits.MULTICOMBAT_AREA) == 1)
@@ -101,6 +112,13 @@ public class PvPLeaderboardPlugin extends Plugin
 					wasInMulti = true;
 				}
 			}
+		}
+		
+		// Check for fight timeout
+		if (inFight && System.currentTimeMillis() - lastCombatTime > FIGHT_TIMEOUT_MS)
+		{
+			log.info("Fight timed out after 30 seconds of no combat");
+			endFightTimeout();
 		}
 	}
 
@@ -112,9 +130,15 @@ public class PvPLeaderboardPlugin extends Plugin
 			Player player = (Player) actorDeath.getActor();
 			Player localPlayer = client.getLocalPlayer();
 			
-			if (player == localPlayer || (opponent != null && player.getName().equals(opponent)))
+			if (player == localPlayer)
 			{
-				endFight();
+				// Local player died = loss
+				endFight("loss");
+			}
+			else if (opponent != null && player.getName().equals(opponent))
+			{
+				// Opponent died = win
+				endFight("win");
 			}
 		}
 	}
@@ -126,29 +150,26 @@ public class PvPLeaderboardPlugin extends Plugin
 		wasInMulti = client.getVarbitValue(Varbits.MULTICOMBAT_AREA) == 1;
 		fightStartSpellbook = client.getVarbitValue(Varbits.SPELLBOOK);
 		fightStartTime = System.currentTimeMillis() / 1000;
+		lastCombatTime = System.currentTimeMillis();
 		log.info("Fight started against: " + opponent + ", Multi: " + wasInMulti + ", Spellbook: " + fightStartSpellbook);
 	}
 
-	private void endFight()
+	private void endFight(String result)
 	{
 		fightEndSpellbook = client.getVarbitValue(Varbits.SPELLBOOK);
 		long fightEndTime = System.currentTimeMillis() / 1000;
 		
-		// Determine fight outcome and update additional stats
-		Player localPlayer = client.getLocalPlayer();
-		if (localPlayer != null && opponent != null)
+		if (opponent != null)
 		{
-			boolean playerWon = localPlayer.getHealthRatio() > 0;
-			String result = playerWon ? "win" : "loss";
 			String opponentRank = getPlayerRank(opponent);
 			String bucket = determineBucket();
 			double currentMMR = estimateCurrentMMR();
 			
-			if (playerWon)
+			if ("win".equals(result))
 			{
 				updateHighestRankDefeated(opponentRank);
 			}
-			else
+			else if ("loss".equals(result))
 			{
 				updateLowestRankLostTo(opponentRank);
 			}
@@ -163,15 +184,26 @@ public class PvPLeaderboardPlugin extends Plugin
 			submitMatchResult(result, fightEndTime);
 		}
 		
-		log.info("Fight ended. Multi during fight: " + wasInMulti + ", Start spellbook: " + fightStartSpellbook + ", End spellbook: " + fightEndSpellbook);
+		log.info("Fight ended with result: " + result + ", Multi during fight: " + wasInMulti + ", Start spellbook: " + fightStartSpellbook + ", End spellbook: " + fightEndSpellbook);
 		
-		// Reset fight state
+		resetFightState();
+	}
+	
+	private void endFightTimeout()
+	{
+		log.info("Fight timed out - no result submitted");
+		resetFightState();
+	}
+	
+	private void resetFightState()
+	{
 		inFight = false;
 		wasInMulti = false;
 		fightStartSpellbook = -1;
 		fightEndSpellbook = -1;
 		opponent = null;
 		fightStartTime = 0;
+		lastCombatTime = 0;
 	}
 
 	private String getOpponentName(HitsplatApplied hitsplatApplied)
@@ -340,6 +372,21 @@ public class PvPLeaderboardPlugin extends Plugin
 			log.error("Error submitting match result", ex);
 			return null;
 		});
+	}
+	
+	private boolean isPlayerOpponent(String name)
+	{
+		if (name == null || "Unknown".equals(name)) return false;
+		
+		// Check if the name exists in the players list
+		for (Player player : client.getPlayers())
+		{
+			if (player.getName() != null && player.getName().equals(name))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 	
 	private String getSpellbookName(int spellbook)
