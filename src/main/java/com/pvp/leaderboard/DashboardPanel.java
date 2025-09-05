@@ -18,12 +18,18 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.Desktop;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
 
 public class DashboardPanel extends PluginPanel
 {
     private JTable matchHistoryTable;
     private DefaultTableModel tableModel;
-    private JTextField usernameField;
+    private JTextField websiteSearchField;
+    private JTextField pluginSearchField;
     private JPasswordField passwordField;
     private JButton loginButton;
     private JLabel playerNameLabel;
@@ -118,19 +124,42 @@ public class DashboardPanel extends PluginPanel
     {
         JPanel authBar = new JPanel();
         authBar.setLayout(new BoxLayout(authBar, BoxLayout.Y_AXIS));
-        authBar.setBorder(BorderFactory.createTitledBorder("Login for Additional Stats"));
-        authBar.setMaximumSize(new Dimension(200, 80));
-        authBar.setPreferredSize(new Dimension(200, 80));
+        authBar.setBorder(BorderFactory.createTitledBorder("Login to view stats in runelite"));
+        authBar.setMaximumSize(new Dimension(220, 160));
+        authBar.setPreferredSize(new Dimension(220, 160));
         
-        authBar.add(new JLabel("Username (optional):"));
-        usernameField = new JTextField();
-        usernameField.setMaximumSize(new Dimension(180, 25));
-        authBar.add(usernameField);
+        // Website search
+        authBar.add(new JLabel("Search user on website:"));
+        JPanel websitePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        websiteSearchField = new JTextField();
+        websiteSearchField.setPreferredSize(new Dimension(120, 25));
+        websiteSearchField.addActionListener(e -> searchUserOnWebsite());
+        JButton websiteSearchBtn = new JButton("Search");
+        websiteSearchBtn.setPreferredSize(new Dimension(70, 25));
+        websiteSearchBtn.addActionListener(e -> searchUserOnWebsite());
+        websitePanel.add(websiteSearchField);
+        websitePanel.add(websiteSearchBtn);
+        authBar.add(websitePanel);
         
         authBar.add(Box.createVerticalStrut(5));
         
-        loginButton = new JButton("Login for Additional Stats");
-        loginButton.setMaximumSize(new Dimension(180, 25));
+        // Plugin search
+        authBar.add(new JLabel("Search user on plugin:"));
+        JPanel pluginPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        pluginSearchField = new JTextField();
+        pluginSearchField.setPreferredSize(new Dimension(120, 25));
+        pluginSearchField.addActionListener(e -> searchUserOnPlugin());
+        JButton pluginSearchBtn = new JButton("Search");
+        pluginSearchBtn.setPreferredSize(new Dimension(70, 25));
+        pluginSearchBtn.addActionListener(e -> searchUserOnPlugin());
+        pluginPanel.add(pluginSearchField);
+        pluginPanel.add(pluginSearchBtn);
+        authBar.add(pluginPanel);
+        
+        authBar.add(Box.createVerticalStrut(5));
+        
+        loginButton = new JButton("Login to view stats in runelite");
+        loginButton.setMaximumSize(new Dimension(200, 25));
         loginButton.addActionListener(e -> handleLogin());
         authBar.add(loginButton);
         
@@ -332,9 +361,9 @@ public class DashboardPanel extends PluginPanel
         {
             // Logout
             showAdditionalStats(false);
-            loginButton.setText("Login for Additional Stats");
-            usernameField.setEnabled(true);
-            usernameField.setText("");
+            loginButton.setText("Login to view stats in runelite");
+            // Plugin search always enabled now
+            pluginSearchField.setText("");
             clearTokens();
             return;
         }
@@ -470,7 +499,7 @@ public class DashboardPanel extends PluginPanel
     
     public String getUsername()
     {
-        return usernameField.getText();
+        return pluginSearchField.getText();
     }
     
     public String getPassword()
@@ -764,14 +793,109 @@ public class DashboardPanel extends PluginPanel
     
     private void completeLogin()
     {
-        String username = usernameField.getText();
+        String username = pluginSearchField.getText();
         if (username.isEmpty()) username = "Fx%20Zephrrr";
         
         playerNameLabel.setText(username);
         showAdditionalStats(true);
         loadMatchHistory(username);
         loginButton.setText("Logout");
-        usernameField.setEnabled(false);
+        // Plugin search always enabled
+    }
+    
+    private void searchUserOnWebsite()
+    {
+        String playerName = websiteSearchField.getText().trim();
+        if (playerName.isEmpty()) return;
+        
+        SwingWorker<String, Void> worker = new SwingWorker<String, Void>()
+        {
+            @Override
+            protected String doInBackground() throws Exception
+            {
+                try
+                {
+                    // Get account hash from API
+                    String apiUrl = "https://kekh0x6kfk.execute-api.us-east-1.amazonaws.com/prod/user?player_id=" + URLEncoder.encode(playerName, "UTF-8");
+                    URL url = new URL(apiUrl);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder response = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null)
+                    {
+                        response.append(line);
+                    }
+                    reader.close();
+                    
+                    JsonObject data = JsonParser.parseString(response.toString()).getAsJsonObject();
+                    if (data.has("account_hash"))
+                    {
+                        String accountHash = data.get("account_hash").getAsString();
+                        return generateAccountSha(accountHash);
+                    }
+                }
+                catch (Exception e)
+                {
+                    e.printStackTrace();
+                }
+                return null;
+            }
+            
+            @Override
+            protected void done()
+            {
+                try
+                {
+                    String accountSha = get();
+                    if (accountSha != null)
+                    {
+                        String profileUrl = "https://devsecopsautomated.com/profile.html?acct=" + accountSha;
+                        Desktop.getDesktop().browse(URI.create(profileUrl));
+                    }
+                    else
+                    {
+                        JOptionPane.showMessageDialog(DashboardPanel.this, "Player not found", "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+                catch (Exception e)
+                {
+                    JOptionPane.showMessageDialog(DashboardPanel.this, "Failed to open profile", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        };
+        worker.execute();
+    }
+    
+    private void searchUserOnPlugin()
+    {
+        String playerName = pluginSearchField.getText().trim();
+        if (playerName.isEmpty()) return;
+        
+        playerNameLabel.setText(playerName);
+        loadMatchHistory(playerName);
+        
+        // Show additional stats only if logged in
+        if (isLoggedIn)
+        {
+            showAdditionalStats(true);
+        }
+    }
+    
+    private String generateAccountSha(String accountHash) throws Exception
+    {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(accountHash.getBytes(StandardCharsets.UTF_8));
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : hash)
+        {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) hexString.append('0');
+            hexString.append(hex);
+        }
+        return hexString.toString();
     }
     
     private void updateAdditionalStats(JsonArray matches)
