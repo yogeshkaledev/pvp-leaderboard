@@ -58,6 +58,9 @@ public class DashboardPanel extends PluginPanel
     private java.util.List<Double> tierHistory = new java.util.ArrayList<>();
     private JsonArray allMatches = null;
     private JButton[] bucketButtons = new JButton[5];
+    private JButton refreshButton;
+    private long lastRefreshTime = 0;
+    private static final long REFRESH_COOLDOWN_MS = 60000; // 1 minute
 
     private PvPLeaderboardConfig config;
     
@@ -125,8 +128,8 @@ public class DashboardPanel extends PluginPanel
         JPanel authBar = new JPanel();
         authBar.setLayout(new BoxLayout(authBar, BoxLayout.Y_AXIS));
         authBar.setBorder(BorderFactory.createTitledBorder("Login to view stats in runelite"));
-        authBar.setMaximumSize(new Dimension(220, 160));
-        authBar.setPreferredSize(new Dimension(220, 160));
+        authBar.setMaximumSize(new Dimension(220, 190));
+        authBar.setPreferredSize(new Dimension(220, 190));
         
         // Website search
         authBar.add(new JLabel("Search user on website:"));
@@ -162,6 +165,13 @@ public class DashboardPanel extends PluginPanel
         loginButton.setMaximumSize(new Dimension(200, 25));
         loginButton.addActionListener(e -> handleLogin());
         authBar.add(loginButton);
+        
+        authBar.add(Box.createVerticalStrut(5));
+        
+        refreshButton = new JButton("Refresh Data");
+        refreshButton.setMaximumSize(new Dimension(200, 25));
+        refreshButton.addActionListener(e -> handleRefresh());
+        authBar.add(refreshButton);
         
         return authBar;
     }
@@ -794,11 +804,11 @@ public class DashboardPanel extends PluginPanel
     private void completeLogin()
     {
         String username = pluginSearchField.getText();
-        if (username.isEmpty()) username = "Fx%20Zephrrr";
-        
         playerNameLabel.setText(username);
         showAdditionalStats(true);
-        loadMatchHistory(username);
+        if (!username.isEmpty()) {
+            loadMatchHistory(username);
+        }
         loginButton.setText("Logout");
         // Plugin search always enabled
     }
@@ -1333,6 +1343,36 @@ public class DashboardPanel extends PluginPanel
                 bucketButtons[i].setEnabled(!isActive);
                 bucketButtons[i].setBackground(isActive ? Color.DARK_GRAY : null);
             }
+        }
+    }
+    
+    private void handleRefresh()
+    {
+        long currentTime = System.currentTimeMillis();
+        long timeSinceLastRefresh = currentTime - lastRefreshTime;
+        
+        if (timeSinceLastRefresh < REFRESH_COOLDOWN_MS)
+        {
+            long remainingSeconds = (REFRESH_COOLDOWN_MS - timeSinceLastRefresh) / 1000;
+            JOptionPane.showMessageDialog(this, 
+                "Please wait " + remainingSeconds + " seconds before refreshing again.", 
+                "Refresh Cooldown", 
+                JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        
+        String currentPlayer = playerNameLabel.getText();
+        if (currentPlayer != null && !currentPlayer.equals("Player Name"))
+        {
+            lastRefreshTime = currentTime;
+            loadMatchHistory(currentPlayer);
+        }
+        else
+        {
+            JOptionPane.showMessageDialog(this, 
+                "No player data to refresh. Search for a player first.", 
+                "No Data", 
+                JOptionPane.INFORMATION_MESSAGE);
         }
     }
     

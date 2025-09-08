@@ -16,6 +16,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
 import java.awt.image.BufferedImage;
 
@@ -33,6 +34,15 @@ public class PvPLeaderboardPlugin extends Plugin
 
 	@Inject
 	private ClientToolbar clientToolbar;
+
+	@Inject
+	private OverlayManager overlayManager;
+
+	@Inject
+	private RankCacheService rankCacheService;
+
+	@Inject
+	private RankOverlay rankOverlay;
 
 	private DashboardPanel dashboardPanel;
 	private NavigationButton navButton;
@@ -63,6 +73,7 @@ public class PvPLeaderboardPlugin extends Plugin
 			.build();
 
 		clientToolbar.addNavigation(navButton);
+		overlayManager.add(rankOverlay);
 		log.info("PvP Leaderboard started!");
 	}
 
@@ -70,6 +81,7 @@ public class PvPLeaderboardPlugin extends Plugin
 	protected void shutDown() throws Exception
 	{
 		clientToolbar.removeNavigation(navButton);
+		overlayManager.remove(rankOverlay);
 		log.info("PvP Leaderboard stopped!");
 	}
 
@@ -92,24 +104,37 @@ public class PvPLeaderboardPlugin extends Plugin
 			Player player = (Player) hitsplatApplied.getActor();
 			Player localPlayer = client.getLocalPlayer();
 			
-			if (localPlayer != null && (player == localPlayer || hitsplatApplied.getHitsplat().isMine()))
+			// Only process if hitsplat is from a player (not NPC)
+			if (localPlayer != null && hitsplatApplied.getHitsplat().isMine() && (player == localPlayer || player != localPlayer))
 			{
-				// Update last combat time
-				lastCombatTime = System.currentTimeMillis();
-				
-				if (!inFight)
+				// For player vs player combat, ensure both source and target are players
+				String opponentName = null;
+				if (player == localPlayer)
 				{
-					String opponentName = player == localPlayer ? getOpponentName(hitsplatApplied) : player.getName();
-					// Only start fight if opponent is a player (not NPC)
-					if (isPlayerOpponent(opponentName))
+					// Local player took damage, find who dealt it
+					opponentName = getPlayerAttacker();
+				}
+				else
+				{
+					// Local player dealt damage to another player
+					opponentName = player.getName();
+				}
+				
+				// Only proceed if we have a valid player opponent
+				if (opponentName != null && isPlayerOpponent(opponentName))
+				{
+					// Update last combat time
+					lastCombatTime = System.currentTimeMillis();
+					
+					if (!inFight)
 					{
 						startFight(opponentName);
 					}
-				}
-				
-				if (client.getVarbitValue(Varbits.MULTICOMBAT_AREA) == 1)
-				{
-					wasInMulti = true;
+					
+					if (client.getVarbitValue(Varbits.MULTICOMBAT_AREA) == 1)
+					{
+						wasInMulti = true;
+					}
 				}
 			}
 		}
@@ -132,6 +157,12 @@ public class PvPLeaderboardPlugin extends Plugin
 			
 			if (player == localPlayer)
 			{
+				// Find who actually killed the local player
+				String actualKiller = findActualKiller();
+				if (actualKiller != null)
+				{
+					opponent = actualKiller;
+				}
 				// Local player died = loss
 				endFight("loss");
 			}
@@ -206,9 +237,9 @@ public class PvPLeaderboardPlugin extends Plugin
 		lastCombatTime = 0;
 	}
 
-	private String getOpponentName(HitsplatApplied hitsplatApplied)
+	private String getPlayerAttacker()
 	{
-		// Try to find the opponent from nearby players
+		// Find a player who is attacking the local player
 		for (Player player : client.getPlayers())
 		{
 			if (player != client.getLocalPlayer() && player.getInteracting() == client.getLocalPlayer())
@@ -216,7 +247,21 @@ public class PvPLeaderboardPlugin extends Plugin
 				return player.getName();
 			}
 		}
-		return "Unknown";
+		return null;
+	}
+	
+	private String findActualKiller()
+	{
+		// Find the player who is currently attacking the local player at time of death
+		Player localPlayer = client.getLocalPlayer();
+		for (Player player : client.getPlayers())
+		{
+			if (player != localPlayer && player.getInteracting() == localPlayer)
+			{
+				return player.getName();
+			}
+		}
+		return null;
 	}
 
 	private String getPlayerRank(String playerName)
@@ -395,9 +440,9 @@ public class PvPLeaderboardPlugin extends Plugin
 			case 0:
 				return "Standard";
 			case 1:
-				return "Lunar";
-			case 2:
 				return "Ancient";
+			case 2:
+				return "Lunar";
 			case 3:
 				return "Arceuus";
 			default:
@@ -409,5 +454,11 @@ public class PvPLeaderboardPlugin extends Plugin
 	PvPLeaderboardConfig provideConfig(ConfigManager configManager)
 	{
 		return configManager.getConfig(PvPLeaderboardConfig.class);
+	}
+
+	@Provides
+	RankCacheService provideRankCacheService()
+	{
+		return new RankCacheService();
 	}
 }

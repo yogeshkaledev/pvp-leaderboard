@@ -29,5 +29,27 @@ public interface PvPLeaderboardConfig extends Config
 		return 12;
 	}
 
+	@ConfigItem(
+		keyName = "showRankIcons",
+		name = "Show Rank Icons",
+		description = "Display rank icons above players"
+	)
+	default boolean showRankIcons()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "rankBucket",
+		name = "Rank Bucket",
+		description = "Which rank bucket to display (overall, nh, veng, multi)"
+	)
+	default String rankBucket()
+	{
+		return "overall";
+	}
+
+
+
 
 }
