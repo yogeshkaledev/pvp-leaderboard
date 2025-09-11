@@ -67,8 +67,8 @@ public class DashboardPanel extends PluginPanel
     public DashboardPanel(PvPLeaderboardConfig config)
     {
         this.config = config;
-        progressBars = new JProgressBar[4];
-        progressLabels = new JLabel[4];
+        progressBars = new JProgressBar[5];
+        progressLabels = new JLabel[5];
         
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -166,12 +166,7 @@ public class DashboardPanel extends PluginPanel
         loginButton.addActionListener(e -> handleLogin());
         authBar.add(loginButton);
         
-        authBar.add(Box.createVerticalStrut(5));
-        
-        refreshButton = new JButton("Refresh Data");
-        refreshButton.setMaximumSize(new Dimension(200, 25));
-        refreshButton.addActionListener(e -> handleRefresh());
-        authBar.add(refreshButton);
+
         
         return authBar;
     }
@@ -180,9 +175,19 @@ public class DashboardPanel extends PluginPanel
     {
         JPanel header = new JPanel(new BorderLayout());
         
+        JPanel namePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        
         playerNameLabel = new JLabel("Player Name");
         playerNameLabel.setFont(playerNameLabel.getFont().deriveFont(Font.BOLD, 18f));
-        header.add(playerNameLabel, BorderLayout.NORTH);
+        namePanel.add(playerNameLabel);
+        namePanel.add(Box.createHorizontalStrut(8));
+        
+        refreshButton = new JButton("Refresh");
+        refreshButton.setPreferredSize(new Dimension(80, 25));
+        refreshButton.addActionListener(e -> handleRefresh());
+        namePanel.add(refreshButton);
+        
+        header.add(namePanel, BorderLayout.NORTH);
         
 //        JPanel bucketRanks = new JPanel(new FlowLayout(FlowLayout.LEFT));
 //        bucketRanks.add(new JLabel("Overall: Rune 3"));
@@ -200,7 +205,7 @@ public class DashboardPanel extends PluginPanel
         section.setLayout(new BoxLayout(section, BoxLayout.Y_AXIS));
         section.setBorder(BorderFactory.createTitledBorder("Rank Progress"));
         
-        String[] buckets = {"Overall", "NH", "Veng", "Multi"};
+        String[] buckets = {"Overall", "NH", "Veng", "Multi", "DMM"};
         
         for (int i = 0; i < buckets.length; i++)
         {
@@ -275,7 +280,8 @@ public class DashboardPanel extends PluginPanel
         additionalStatsPanel.setBorder(BorderFactory.createTitledBorder("Additional Stats"));
         additionalStatsPanel.setVisible(false); // Hidden by default
         
-        JPanel statsPanel = new JPanel(new GridLayout(2, 2, 10, 5));
+        // Stats row like website with scroller
+        JPanel statsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 24, 0));
         
         JPanel highestRank = new JPanel();
         highestRank.setLayout(new BoxLayout(highestRank, BoxLayout.Y_AXIS));
@@ -296,26 +302,21 @@ public class DashboardPanel extends PluginPanel
         statsPanel.add(highestRank);
         statsPanel.add(lowestRank);
         
-        additionalStatsPanel.add(statsPanel);
+        JScrollPane statsScrollPane = new JScrollPane(statsPanel);
+        statsScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
+        statsScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        statsScrollPane.setBorder(null);
+        statsScrollPane.setPreferredSize(new Dimension(0, 60));
+        additionalStatsPanel.add(statsScrollPane);
         additionalStatsPanel.add(Box.createVerticalStrut(16));
         
-        // Tier Graph Section
-        JPanel tierSection = new JPanel();
-        tierSection.setLayout(new BoxLayout(tierSection, BoxLayout.Y_AXIS));
-        
-        // Create container with header and graph in same scrollable area
-        JPanel graphContainer = new JPanel();
-        graphContainer.setLayout(new BoxLayout(graphContainer, BoxLayout.Y_AXIS));
-        
-        JPanel tierHeader = new JPanel(new BorderLayout());
-        tierHeader.add(new JLabel("Tier Graph"), BorderLayout.WEST);
-        
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        // Bucket selector above the title - horizontal with scroll
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         String[] buckets = {"Overall", "NH", "Veng", "Multi", "DMM"};
         for (int i = 0; i < buckets.length; i++) {
             String bucket = buckets[i];
             JButton btn = new JButton(bucket);
-            btn.setPreferredSize(new Dimension(60, 24));
+            btn.setPreferredSize(new Dimension(70, 25));
             btn.addActionListener(e -> {
                 selectedBucket = bucket.toLowerCase();
                 updateBucketButtonStates(bucket);
@@ -327,21 +328,29 @@ public class DashboardPanel extends PluginPanel
             buttonPanel.add(btn);
         }
         updateBucketButtonStates("Overall");
-        tierHeader.add(buttonPanel, BorderLayout.EAST);
         
-        graphContainer.add(tierHeader);
-        graphContainer.add(Box.createVerticalStrut(8));
+        JScrollPane buttonScrollPane = new JScrollPane(buttonPanel);
+        buttonScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
+        buttonScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        buttonScrollPane.setBorder(null);
+        buttonScrollPane.setPreferredSize(new Dimension(0, 35));
+        additionalStatsPanel.add(buttonScrollPane);
+        
+        // Tier Graph title - left aligned
+        JPanel titlePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        JLabel tierTitle = new JLabel("Tier Graph");
+        tierTitle.setFont(tierTitle.getFont().deriveFont(Font.BOLD, 14f));
+        titlePanel.add(tierTitle);
+        additionalStatsPanel.add(titlePanel);
+        additionalStatsPanel.add(Box.createVerticalStrut(8));
         
         tierGraphPanel = createTierGraph();
-        graphContainer.add(tierGraphPanel);
-        
-        JScrollPane tierScrollPane = new JScrollPane(graphContainer);
+        JScrollPane tierScrollPane = new JScrollPane(tierGraphPanel);
         tierScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
         tierScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        tierScrollPane.setPreferredSize(new Dimension(0, 320));
-        tierSection.add(tierScrollPane);
+        tierScrollPane.setPreferredSize(new Dimension(0, 260));
+        additionalStatsPanel.add(tierScrollPane);
         
-        additionalStatsPanel.add(tierSection);
         return additionalStatsPanel;
     }
     
@@ -465,6 +474,10 @@ public class DashboardPanel extends PluginPanel
                             allMatches = matches;
                             updateAdditionalStats(matches);
                         }
+                        
+                        // Update bucket bars from matches after they're loaded
+                        allMatches = matches;
+                        updateBucketBarsFromMatches();
                     });
                 }
                 catch (Exception e)
@@ -493,13 +506,150 @@ public class DashboardPanel extends PluginPanel
         if (match.has("rating_change"))
         {
             JsonObject ratingChange = match.getAsJsonObject("rating_change");
+            
+            // Prefer actual MMR delta from backend when present
             if (ratingChange.has("mmr_delta"))
             {
-                double delta = ratingChange.get("mmr_delta").getAsDouble();
-                return String.format("%+.2f MMR", delta);
+                double mmrDelta = ratingChange.get("mmr_delta").getAsDouble();
+                String mmrText = String.format("%+.2f MMR", mmrDelta);
+                
+                String fromRank = ratingChange.has("from_rank") ? ratingChange.get("from_rank").getAsString() : "";
+                String toRank = ratingChange.has("to_rank") ? ratingChange.get("to_rank").getAsString() : "";
+                int fromDiv = ratingChange.has("from_division") ? ratingChange.get("from_division").getAsInt() : 0;
+                int toDiv = ratingChange.has("to_division") ? ratingChange.get("to_division").getAsInt() : 0;
+                
+                String fromLabel = fromRank + (fromDiv > 0 ? " " + fromDiv : "");
+                String toLabel = toRank + (toDiv > 0 ? " " + toDiv : "");
+                
+                if (!fromLabel.trim().isEmpty() || !toLabel.trim().isEmpty())
+                {
+                    return mmrText + "<br><small>" + (fromLabel.trim().isEmpty() ? "?" : fromLabel) + " → " + (toLabel.trim().isEmpty() ? "?" : toLabel) + "</small>";
+                }
+                return mmrText;
             }
+            
+            // Fallback to progress-based calculation
+            String fromRank = ratingChange.has("from_rank") ? ratingChange.get("from_rank").getAsString() : "";
+            String toRank = ratingChange.has("to_rank") ? ratingChange.get("to_rank").getAsString() : "";
+            int fromDiv = ratingChange.has("from_division") ? ratingChange.get("from_division").getAsInt() : 0;
+            int toDiv = ratingChange.has("to_division") ? ratingChange.get("to_division").getAsInt() : 0;
+            double progressChange = ratingChange.has("progress_change") ? ratingChange.get("progress_change").getAsDouble() : 0;
+            
+            String fromLabel = fromRank + (fromDiv > 0 ? " " + fromDiv : "");
+            String toLabel = toRank + (toDiv > 0 ? " " + toDiv : "");
+            
+            // Calculate progress percentages
+            double playerMmr = match.has("player_mmr") ? match.get("player_mmr").getAsDouble() : 0;
+            double afterProg = calculateProgressFromMMR(playerMmr);
+            double beforeProg = afterProg - progressChange;
+            
+            // Handle rank wrapping for cross-rank changes
+            String fromKey = fromRank + "|" + fromDiv;
+            String toKey = toRank + "|" + toDiv;
+            if (!fromKey.equals(toKey) && Math.abs(progressChange) > 0)
+            {
+                String result = match.has("result") ? match.get("result").getAsString().toLowerCase() : "";
+                int signShouldBe = "win".equals(result) ? 1 : ("loss".equals(result) ? -1 : (int)Math.signum(progressChange));
+                if (Math.signum(progressChange) != signShouldBe)
+                {
+                    beforeProg = afterProg + (100 - Math.abs(progressChange)) * signShouldBe;
+                }
+            }
+            
+            beforeProg = Math.max(0, Math.min(100, beforeProg));
+            
+            String progressLine = (fromLabel.trim().isEmpty() ? "?" : fromLabel) + " (" + Math.round(beforeProg) + "%) → " + 
+                                 (toLabel.trim().isEmpty() ? "?" : toLabel) + " (" + Math.round(afterProg) + "%)";
+            
+            // Calculate wrapped delta
+            int fromIdx = getRankIndex(fromRank, fromDiv);
+            int toIdx = getRankIndex(toRank, toDiv);
+            double rawDelta = (afterProg - beforeProg) + (toIdx - fromIdx) * 100;
+            
+            String result = match.has("result") ? match.get("result").getAsString().toLowerCase() : "";
+            String deltaText = "tie".equals(result) ? "0% change" : 
+                              String.format("%+.2f%% change", rawDelta);
+            
+            return progressLine + "<br><small>" + deltaText + "</small>";
         }
         return "-";
+    }
+    
+    private double calculateProgressFromMMR(double mmr)
+    {
+        String[][] thresholds = {
+            {"Bronze", "3", "0"}, {"Bronze", "2", "170"}, {"Bronze", "1", "240"},
+            {"Iron", "3", "310"}, {"Iron", "2", "380"}, {"Iron", "1", "450"},
+            {"Steel", "3", "520"}, {"Steel", "2", "590"}, {"Steel", "1", "660"},
+            {"Black", "3", "730"}, {"Black", "2", "800"}, {"Black", "1", "870"},
+            {"Mithril", "3", "940"}, {"Mithril", "2", "1010"}, {"Mithril", "1", "1080"},
+            {"Adamant", "3", "1150"}, {"Adamant", "2", "1250"}, {"Adamant", "1", "1350"},
+            {"Rune", "3", "1450"}, {"Rune", "2", "1550"}, {"Rune", "1", "1650"},
+            {"Dragon", "3", "1750"}, {"Dragon", "2", "1850"}, {"Dragon", "1", "1950"},
+            {"3rd Age", "0", "2100"}
+        };
+        
+        String[] current = thresholds[0];
+        for (String[] threshold : thresholds)
+        {
+            if (mmr >= Double.parseDouble(threshold[2]))
+            {
+                current = threshold;
+            }
+            else
+            {
+                break;
+            }
+        }
+        
+        if ("3rd Age".equals(current[0]))
+        {
+            return 100.0;
+        }
+        
+        int currentIndex = -1;
+        for (int i = 0; i < thresholds.length; i++)
+        {
+            if (thresholds[i][0].equals(current[0]) && thresholds[i][1].equals(current[1]))
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+        
+        if (currentIndex >= 0 && currentIndex < thresholds.length - 1)
+        {
+            double currentThreshold = Double.parseDouble(current[2]);
+            double nextThreshold = Double.parseDouble(thresholds[currentIndex + 1][2]);
+            double span = nextThreshold - currentThreshold;
+            return Math.max(0, Math.min(100, ((mmr - currentThreshold) / span) * 100));
+        }
+        
+        return 0.0;
+    }
+    
+    private int getRankIndex(String rank, int division)
+    {
+        String[][] thresholds = {
+            {"Bronze", "3"}, {"Bronze", "2"}, {"Bronze", "1"},
+            {"Iron", "3"}, {"Iron", "2"}, {"Iron", "1"},
+            {"Steel", "3"}, {"Steel", "2"}, {"Steel", "1"},
+            {"Black", "3"}, {"Black", "2"}, {"Black", "1"},
+            {"Mithril", "3"}, {"Mithril", "2"}, {"Mithril", "1"},
+            {"Adamant", "3"}, {"Adamant", "2"}, {"Adamant", "1"},
+            {"Rune", "3"}, {"Rune", "2"}, {"Rune", "1"},
+            {"Dragon", "3"}, {"Dragon", "2"}, {"Dragon", "1"},
+            {"3rd Age", "0"}
+        };
+        
+        for (int i = 0; i < thresholds.length; i++)
+        {
+            if (thresholds[i][0].equals(rank) && Integer.parseInt(thresholds[i][1]) == division)
+            {
+                return i;
+            }
+        }
+        return 0;
     }
     
     private String formatTime(long timestamp)
@@ -521,6 +671,7 @@ public class DashboardPanel extends PluginPanel
     {
         try
         {
+            // First try user endpoint by player_id
             String apiUrl = "https://kekh0x6kfk.execute-api.us-east-1.amazonaws.com/prod/user?player_id=" + playerId;
             URL url = new URL(apiUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -536,6 +687,9 @@ public class DashboardPanel extends PluginPanel
             reader.close();
             
             JsonObject stats = JsonParser.parseString(response.toString()).getAsJsonObject();
+            
+
+            
             SwingUtilities.invokeLater(() -> updateProgressBars(stats));
         }
         catch (Exception e)
@@ -546,13 +700,6 @@ public class DashboardPanel extends PluginPanel
     
     private void updateProgressBars(JsonObject stats)
     {
-        if (stats.has("mmr"))
-        {
-            double mmr = stats.get("mmr").getAsDouble();
-            RankInfo rankInfo = calculateRankFromMMR(mmr);
-            updateProgressBar(0, "Overall", rankInfo.rank, rankInfo.division, rankInfo.progress);
-        }
-        
         String playerName = null;
         if (stats.has("player_name"))
         {
@@ -565,81 +712,174 @@ public class DashboardPanel extends PluginPanel
         
         if (playerName != null)
         {
-            String[] buckets = {"nh", "veng", "multi"};
-            for (int i = 0; i < buckets.length; i++)
-            {
-                loadBucketStats(playerName, buckets[i], i + 1);
-            }
+            updatePlayerStats(stats, playerName);
         }
     }
     
-    private void loadBucketStats(String playerName, String bucket, int index)
+    private void updatePlayerStats(JsonObject stats, String playerName)
     {
-        SwingWorker<RankInfo, Void> worker = new SwingWorker<RankInfo, Void>()
+        SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>()
         {
             @Override
-            protected RankInfo doInBackground() throws Exception
+            protected Void doInBackground() throws Exception
             {
-                try
+                // Overall from top-level profile stats (MMR) - like website
+                if (stats.has("mmr"))
                 {
-                    String apiUrl = "https://kekh0x6kfk.execute-api.us-east-1.amazonaws.com/prod/leaderboard?bucket=" + bucket + "&limit=550";
-                    URL url = new URL(apiUrl);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("GET");
-                    
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    StringBuilder response = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null)
-                    {
-                        response.append(line);
-                    }
-                    reader.close();
-                    
-                    JsonObject data = JsonParser.parseString(response.toString()).getAsJsonObject();
-                    JsonArray players = data.getAsJsonArray("players");
-                    
-                    for (int i = 0; i < players.size(); i++)
-                    {
-                        JsonObject player = players.get(i).getAsJsonObject();
-                        if (player.get("player_name").getAsString().equalsIgnoreCase(playerName))
-                        {
-                            double mmr = player.get("mmr").getAsDouble();
-                            return calculateRankFromMMR(mmr);
-                        }
-                    }
+                    double mmr = stats.get("mmr").getAsDouble();
+                    RankInfo rankInfo = rankLabelAndProgressFromMMR(mmr);
+                    SwingUtilities.invokeLater(() -> setBucketBar("overall", rankInfo.rank, rankInfo.division, rankInfo.progress));
                 }
-                catch (Exception e)
-                {
-                    e.printStackTrace();
-                }
-                return new RankInfo("Bronze", 3, 0);
-            }
-            
-            @Override
-            protected void done()
-            {
-                try
-                {
-                    RankInfo rankInfo = get();
-                    String bucketName = bucket.substring(0, 1).toUpperCase() + bucket.substring(1);
-                    updateProgressBar(index, bucketName.toUpperCase(), rankInfo.rank, rankInfo.division, rankInfo.progress);
-                }
-                catch (Exception e)
-                {
-                    e.printStackTrace();
-                }
+                
+                // Note: Bucket bars will be updated after matches are loaded
+                
+                return null;
             }
         };
         worker.execute();
     }
     
+    private void updateBucketBarsFromMatches()
+    {
+        if (allMatches == null) return;
+        
+        String[] buckets = {"nh", "veng", "multi", "dmm"};
+        for (String bucket : buckets)
+        {
+            JsonObject latestMatch = null;
+            for (int i = 0; i < allMatches.size(); i++)
+            {
+                JsonObject match = allMatches.get(i).getAsJsonObject();
+                String matchBucket = match.has("bucket") ? match.get("bucket").getAsString().toLowerCase() : "";
+                if (matchBucket.equals(bucket))
+                {
+                    if (latestMatch == null || 
+                        (match.has("when") && latestMatch.has("when") && 
+                         match.get("when").getAsLong() > latestMatch.get("when").getAsLong()))
+                    {
+                        latestMatch = match;
+                    }
+                }
+            }
+            
+            if (latestMatch != null && latestMatch.has("player_mmr"))
+            {
+                double mmr = latestMatch.get("player_mmr").getAsDouble();
+                RankInfo rankInfo = rankLabelAndProgressFromMMR(mmr);
+                setBucketBar(bucket, rankInfo.rank, rankInfo.division, rankInfo.progress);
+            }
+            else
+            {
+                setBucketBar(bucket, "—", 0, 0);
+            }
+        }
+    }
+    
+    private RankInfo rankLabelAndProgressFromMMR(double mmrVal)
+    {
+        String[][] thresholds = {
+            {"Bronze", "3", "0"}, {"Bronze", "2", "170"}, {"Bronze", "1", "240"},
+            {"Iron", "3", "310"}, {"Iron", "2", "380"}, {"Iron", "1", "450"},
+            {"Steel", "3", "520"}, {"Steel", "2", "590"}, {"Steel", "1", "660"},
+            {"Black", "3", "730"}, {"Black", "2", "800"}, {"Black", "1", "870"},
+            {"Mithril", "3", "940"}, {"Mithril", "2", "1010"}, {"Mithril", "1", "1080"},
+            {"Adamant", "3", "1150"}, {"Adamant", "2", "1250"}, {"Adamant", "1", "1350"},
+            {"Rune", "3", "1450"}, {"Rune", "2", "1550"}, {"Rune", "1", "1650"},
+            {"Dragon", "3", "1750"}, {"Dragon", "2", "1850"}, {"Dragon", "1", "1950"},
+            {"3rd Age", "0", "2100"}
+        };
+        
+        double v = mmrVal;
+        String[] curr = thresholds[0];
+        for (String[] t : thresholds)
+        {
+            if (v >= Double.parseDouble(t[2])) curr = t;
+            else break;
+        }
+        
+        int idx = -1;
+        for (int i = 0; i < thresholds.length; i++)
+        {
+            if (thresholds[i][0].equals(curr[0]) && thresholds[i][1].equals(curr[1]) && thresholds[i][2].equals(curr[2]))
+            {
+                idx = i;
+                break;
+            }
+        }
+        
+        String[] next = idx >= 0 && idx < thresholds.length - 1 ? thresholds[idx + 1] : curr;
+        double pct = curr[0].equals("3rd Age") ? 100 : 
+                    Math.max(0, Math.min(100, ((v - Double.parseDouble(curr[2])) / Math.max(1, Double.parseDouble(next[2]) - Double.parseDouble(curr[2]))) * 100));
+        
+        return new RankInfo(curr[0], Integer.parseInt(curr[1]), pct);
+    }
+    
+    private void setBucketBar(String key, String rank, int division, double pct)
+    {
+        int index = getBucketIndex(key);
+        if (index < 0) return;
+        
+        if (rank.equals("—"))
+        {
+            progressLabels[index].setText(key.toUpperCase() + " - — (0.0%)");
+            progressBars[index].setValue(0);
+            progressBars[index].setString("0.0%");
+        }
+        else
+        {
+            String rankLabel = rank + (division > 0 ? " " + division : "");
+            progressLabels[index].setText(key.toUpperCase() + " - " + rankLabel);
+            progressBars[index].setValue((int) pct);
+            progressBars[index].setString(String.format("%.1f%%", pct));
+        }
+    }
+    
+    private void updateRankNumber(int index, int rankNumber)
+    {
+        String currentText = progressLabels[index].getText();
+        if (!currentText.contains("Rank #"))
+        {
+            progressLabels[index].setText(currentText + " - Rank #" + rankNumber);
+        }
+    }
+    
+    private int getBucketIndex(String bucket)
+    {
+        switch (bucket.toLowerCase())
+        {
+            case "overall": return 0;
+            case "nh": return 1;
+            case "veng": return 2;
+            case "multi": return 3;
+            case "dmm": return 4;
+            default: return -1;
+        }
+    }
+    
+
+    
     private void updateProgressBar(int index, String bucketName, String rank, int division, double progress)
     {
-        String rankText = rank + (division > 0 ? " " + division : "");
-        progressLabels[index].setText(bucketName + " - " + rankText + " (" + String.format("%.1f", progress) + "%)");
-        progressBars[index].setValue((int) progress);
-        progressBars[index].setString(String.format("%.1f%%", progress));
+        updateProgressBar(index, bucketName, rank, division, progress, -1);
+    }
+    
+    private void updateProgressBar(int index, String bucketName, String rank, int division, double progress, int rankNumber)
+    {
+        if (rank.equals("Bronze") && division == 3 && progress == 0)
+        {
+            // No data case - show like website
+            progressLabels[index].setText(bucketName + " - — (0.0%)");
+            progressBars[index].setValue(0);
+            progressBars[index].setString("0.0%");
+        }
+        else
+        {
+            String rankText = rank + (division > 0 ? " " + division : "");
+            String rankNumText = (rankNumber > 0 && index == 0) ? " - Rank #" + rankNumber : ""; // Only show rank number for Overall
+            progressLabels[index].setText(bucketName + " - " + rankText + rankNumText);
+            progressBars[index].setValue((int) progress);
+            progressBars[index].setString(String.format("%.1f%%", progress));
+        }
     }
     
     private RankInfo calculateRankFromMMR(double mmr)
@@ -804,6 +1044,10 @@ public class DashboardPanel extends PluginPanel
     private void completeLogin()
     {
         String username = pluginSearchField.getText();
+        
+        // Store the token from auth service
+        idToken = authService.getStoredIdToken();
+        
         playerNameLabel.setText(username);
         showAdditionalStats(true);
         if (!username.isEmpty()) {
@@ -1381,6 +1625,7 @@ public class DashboardPanel extends PluginPanel
         String rank;
         int division;
         double progress;
+        int rankNumber = -1;
         
         RankInfo(String rank, int division, double progress)
         {
