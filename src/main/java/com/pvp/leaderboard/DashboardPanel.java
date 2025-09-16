@@ -23,6 +23,8 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 public class DashboardPanel extends PluginPanel
 {
@@ -61,8 +63,31 @@ public class DashboardPanel extends PluginPanel
     private JButton refreshButton;
     private long lastRefreshTime = 0;
     private static final long REFRESH_COOLDOWN_MS = 60000; // 1 minute
+    private static final Map<String, Color> RANK_COLORS = new HashMap<String, Color>() {{
+        put("Bronze", new Color(184, 115, 51));
+        put("Iron", new Color(192, 192, 192));
+        put("Steel", new Color(154, 162, 166));
+        put("Black", new Color(106, 106, 106));
+        put("Mithril", new Color(59, 167, 214));
+        put("Adamant", new Color(26, 139, 111));
+        put("Rune", new Color(78, 159, 227));
+        put("Dragon", new Color(229, 57, 53));
+        put("3rd", new Color(229, 193, 0));
+    }};
+    
+    private Color getRankColor(String rankName) {
+        if (rankName == null) return new Color(102, 102, 102);
+        String baseName = rankName.split(" ")[0];
+        return RANK_COLORS.getOrDefault(baseName, new Color(102, 102, 102));
+    }
 
     private PvPLeaderboardConfig config;
+    private ProfileState currentProfile = new ProfileState();
+    private Map<String, Integer> bucketRankNumbers = new HashMap<>();
+    
+    private String canonName(String name) {
+        return String.valueOf(name != null ? name : "").trim().replaceAll("\\s+", " ").toLowerCase();
+    }
     
     public DashboardPanel(PvPLeaderboardConfig config)
     {
@@ -211,7 +236,7 @@ public class DashboardPanel extends PluginPanel
         {
             JPanel bucketPanel = new JPanel(new BorderLayout());
             
-            progressLabels[i] = new JLabel(buckets[i] + " - Loading...");
+            progressLabels[i] = new JLabel(buckets[i] + " - — (0.0%) ");
             progressLabels[i].setFont(progressLabels[i].getFont().deriveFont(Font.BOLD));
             bucketPanel.add(progressLabels[i], BorderLayout.NORTH);
             
@@ -423,7 +448,8 @@ public class DashboardPanel extends PluginPanel
                 {
                     loadPlayerStats(playerId);
                     
-                    String apiUrl = "https://kekh0x6kfk.execute-api.us-east-1.amazonaws.com/prod/matches?player_id=" + playerId + "&limit=500";
+                    // Use player_id parameter like website does for matches
+                    String apiUrl = "https://kekh0x6kfk.execute-api.us-east-1.amazonaws.com/prod/matches?player_id=" + URLEncoder.encode(playerId, "UTF-8") + "&limit=500";
                     URL url = new URL(apiUrl);
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                     conn.setRequestMethod("GET");
@@ -671,8 +697,8 @@ public class DashboardPanel extends PluginPanel
     {
         try
         {
-            // First try user endpoint by player_id
-            String apiUrl = "https://kekh0x6kfk.execute-api.us-east-1.amazonaws.com/prod/user?player_id=" + playerId;
+            // Use user endpoint by player_id like website does
+            String apiUrl = "https://kekh0x6kfk.execute-api.us-east-1.amazonaws.com/prod/user?player_id=" + URLEncoder.encode(playerId, "UTF-8");
             URL url = new URL(apiUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
@@ -690,7 +716,15 @@ public class DashboardPanel extends PluginPanel
             
 
             
-            SwingUtilities.invokeLater(() -> updateProgressBars(stats));
+            SwingUtilities.invokeLater(() -> {
+                updateProgressBars(stats);
+                // Force immediate rank number lookup for all buckets
+                String playerName = stats.has("player_name") ? stats.get("player_name").getAsString() : 
+                                  (stats.has("player_id") ? stats.get("player_id").getAsString() : null);
+                if (playerName != null) {
+                    updateAllRankNumbers(playerName);
+                }
+            });
         }
         catch (Exception e)
         {
@@ -727,11 +761,15 @@ public class DashboardPanel extends PluginPanel
                 if (stats.has("mmr"))
                 {
                     double mmr = stats.get("mmr").getAsDouble();
-                    RankInfo rankInfo = rankLabelAndProgressFromMMR(mmr);
-                    SwingUtilities.invokeLater(() -> setBucketBar("overall", rankInfo.rank, rankInfo.division, rankInfo.progress));
+                    RankInfo overall = rankLabelAndProgressFromMMR(mmr);
+                    
+                    // Get rank number from leaderboard for Overall
+                    int rankNumber = getRankNumberFromLeaderboard(playerName, "overall");
+                    
+                    SwingUtilities.invokeLater(() -> {
+                        setBucketBarWithRank("overall", overall.rank, overall.division, overall.progress, rankNumber);
+                    });
                 }
-                
-                // Note: Bucket bars will be updated after matches are loaded
                 
                 return null;
             }
@@ -741,38 +779,156 @@ public class DashboardPanel extends PluginPanel
     
     private void updateBucketBarsFromMatches()
     {
-        if (allMatches == null) return;
+        if (allMatches == null || allMatches.size() == 0) return;
+        
+        String playerName = playerNameLabel.getText();
+        if (playerName == null || playerName.equals("Player Name")) return;
         
         String[] buckets = {"nh", "veng", "multi", "dmm"};
         for (String bucket : buckets)
         {
-            JsonObject latestMatch = null;
+            JsonArray items = new JsonArray();
             for (int i = 0; i < allMatches.size(); i++)
             {
                 JsonObject match = allMatches.get(i).getAsJsonObject();
                 String matchBucket = match.has("bucket") ? match.get("bucket").getAsString().toLowerCase() : "";
                 if (matchBucket.equals(bucket))
                 {
-                    if (latestMatch == null || 
-                        (match.has("when") && latestMatch.has("when") && 
-                         match.get("when").getAsLong() > latestMatch.get("when").getAsLong()))
-                    {
-                        latestMatch = match;
-                    }
+                    items.add(match);
                 }
             }
             
-            if (latestMatch != null && latestMatch.has("player_mmr"))
+            if (items.size() == 0)
             {
-                double mmr = latestMatch.get("player_mmr").getAsDouble();
-                RankInfo rankInfo = rankLabelAndProgressFromMMR(mmr);
-                setBucketBar(bucket, rankInfo.rank, rankInfo.division, rankInfo.progress);
+                continue;
             }
-            else
+            
+            // Find latest match by timestamp
+            JsonObject latest = null;
+            for (int i = 0; i < items.size(); i++)
             {
-                setBucketBar(bucket, "—", 0, 0);
+                JsonObject item = items.get(i).getAsJsonObject();
+                if (latest == null || 
+                    (item.has("when") && latest.has("when") && 
+                     item.get("when").getAsLong() > latest.get("when").getAsLong()))
+                {
+                    latest = item;
+                }
+            }
+            
+            if (latest != null && latest.has("player_mmr"))
+            {
+                double mmr = latest.get("player_mmr").getAsDouble();
+                RankInfo est = rankLabelAndProgressFromMMR(mmr);
+                
+                String finalRank = latest.has("player_rank") ? latest.get("player_rank").getAsString() : est.rank;
+                int finalDiv = latest.has("player_division") ? latest.get("player_division").getAsInt() : est.division;
+                double pct = est.progress;
+                
+                // Get rank number from leaderboard asynchronously
+                SwingWorker<Integer, Void> worker = new SwingWorker<Integer, Void>()
+                {
+                    @Override
+                    protected Integer doInBackground() throws Exception
+                    {
+                        return getRankNumberFromLeaderboard(playerName, bucket);
+                    }
+                    
+                    @Override
+                    protected void done()
+                    {
+                        try
+                        {
+                            int rankNumber = get();
+                            setBucketBarWithRank(bucket, finalRank, finalDiv, pct, rankNumber);
+                        }
+                        catch (Exception e)
+                        {
+                            setBucketBar(bucket, finalRank, finalDiv, pct);
+                        }
+                    }
+                };
+                worker.execute();
             }
         }
+    }
+    
+    private int getRankNumberFromLeaderboard(String playerName, String bucket)
+    {
+        try
+        {
+            String s3Key;
+            switch (bucket.toLowerCase()) {
+                case "overall":
+                    s3Key = "/leaderboard.json";
+                    break;
+                case "nh":
+                    s3Key = "/leaderboard_nh.json";
+                    break;
+                case "veng":
+                    s3Key = "/leaderboard_veng.json";
+                    break;
+                case "multi":
+                    s3Key = "/leaderboard_multi.json";
+                    break;
+                case "dmm":
+                    s3Key = "/leaderboard_dmm.json";
+                    break;
+                default:
+                    return -1;
+            }
+            
+            String s3Url = "https://devsecopsautomated.com" + s3Key;
+            URL url = new URL(s3Url);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Cache-Control", "no-store");
+            
+            if (conn.getResponseCode() != 200) return -1;
+            
+            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null)
+            {
+                response.append(line);
+            }
+            reader.close();
+            
+            JsonObject data = JsonParser.parseString(response.toString()).getAsJsonObject();
+            if (!data.has("players")) return -1;
+            
+            JsonArray players = data.getAsJsonArray("players");
+            
+            // If no players in leaderboard, return rank 1 like website does
+            if (players.size() == 0) return 1;
+            
+            String canonPlayerName = canonName(playerName);
+            
+            for (int i = 0; i < players.size(); i++)
+            {
+                JsonObject player = players.get(i).getAsJsonObject();
+                String foundName = null;
+                
+                if (player.has("player_names") && !player.get("player_names").isJsonNull())
+                {
+                    JsonArray names = player.getAsJsonArray("player_names");
+                    if (names.size() > 0) {
+                        foundName = names.get(0).getAsString();
+                    }
+                }
+                
+                if (foundName != null && canonName(foundName).equals(canonPlayerName))
+                {
+                    return i + 1;
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            // Silent failure
+        }
+        return -1;
     }
     
     private RankInfo rankLabelAndProgressFromMMR(double mmrVal)
@@ -814,24 +970,36 @@ public class DashboardPanel extends PluginPanel
         return new RankInfo(curr[0], Integer.parseInt(curr[1]), pct);
     }
     
+    private void setBucketBarWithRank(String key, String rank, int division, double pct, int rankNumber)
+    {
+        if (rankNumber > 0) {
+            bucketRankNumbers.put(key, rankNumber);
+        }
+        setBucketBar(key, rank, division, pct);
+    }
+    
     private void setBucketBar(String key, String rank, int division, double pct)
     {
         int index = getBucketIndex(key);
-        if (index < 0) return;
+        if (index < 0 || progressLabels[index] == null || progressBars[index] == null) return;
         
-        if (rank.equals("—"))
-        {
-            progressLabels[index].setText(key.toUpperCase() + " - — (0.0%)");
-            progressBars[index].setValue(0);
-            progressBars[index].setString("0.0%");
+        String rankLabel = rank + (division > 0 ? " " + division : "");
+        String bucketName = key.equals("overall") ? "Overall" : key.toUpperCase();
+        
+        // Build label text with rank number if available
+        String labelText = bucketName + " - " + rankLabel;
+        Integer rankNumber = bucketRankNumbers.get(key);
+        if (rankNumber != null && rankNumber > 0) {
+            labelText += " - Rank #" + rankNumber;
         }
-        else
-        {
-            String rankLabel = rank + (division > 0 ? " " + division : "");
-            progressLabels[index].setText(key.toUpperCase() + " - " + rankLabel);
-            progressBars[index].setValue((int) pct);
-            progressBars[index].setString(String.format("%.1f%%", pct));
-        }
+        
+        progressLabels[index].setText(labelText);
+        progressLabels[index].setForeground(getRankColor(rank));
+        
+        int pctValue = (int) Math.max(0, Math.min(100, pct));
+        progressBars[index].setValue(pctValue);
+        progressBars[index].setString(String.format("%.1f%%", pct));
+        progressBars[index].setForeground(getRankColor(rank));
     }
     
     private void updateRankNumber(int index, int rankNumber)
@@ -1069,7 +1237,7 @@ public class DashboardPanel extends PluginPanel
             {
                 try
                 {
-                    // Get account hash from API
+                    // Get account hash from API - match website logic
                     String apiUrl = "https://kekh0x6kfk.execute-api.us-east-1.amazonaws.com/prod/user?player_id=" + URLEncoder.encode(playerName, "UTF-8");
                     URL url = new URL(apiUrl);
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -1085,7 +1253,9 @@ public class DashboardPanel extends PluginPanel
                     reader.close();
                     
                     JsonObject data = JsonParser.parseString(response.toString()).getAsJsonObject();
-                    if (data.has("account_hash"))
+                    
+                    // Check for account_hash like website does
+                    if (data.has("account_hash") && !data.get("account_hash").isJsonNull())
                     {
                         String accountHash = data.get("account_hash").getAsString();
                         return generateAccountSha(accountHash);
@@ -1129,6 +1299,11 @@ public class DashboardPanel extends PluginPanel
         if (playerName.isEmpty()) return;
         
         playerNameLabel.setText(playerName);
+        
+        // Update player name in current profile for rank lookups
+        if (currentProfile != null) {
+            currentProfile.name = playerName;
+        }
         loadMatchHistory(playerName);
         
         // Show additional stats only if logged in
@@ -1625,13 +1800,65 @@ public class DashboardPanel extends PluginPanel
         String rank;
         int division;
         double progress;
-        int rankNumber = -1;
         
         RankInfo(String rank, int division, double progress)
         {
             this.rank = rank;
             this.division = division;
             this.progress = progress;
+        }
+    }
+    
+    private void updateAllRankNumbers(String playerName)
+    {
+        String[] buckets = {"overall", "nh", "veng", "multi", "dmm"};
+        
+        SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>()
+        {
+            @Override
+            protected Void doInBackground() throws Exception
+            {
+                for (String bucket : buckets)
+                {
+                    int rankNumber = getRankNumberFromLeaderboard(playerName, bucket);
+                    
+                    if (rankNumber > 0)
+                    {
+                        SwingUtilities.invokeLater(() -> {
+                            bucketRankNumbers.put(bucket, rankNumber);
+                            updateBucketLabel(bucket);
+                        });
+                    }
+                }
+                return null;
+            }
+        };
+        worker.execute();
+    }
+    
+    private void updateBucketLabel(String bucket)
+    {
+        int index = getBucketIndex(bucket);
+        if (index < 0 || progressLabels[index] == null) return;
+        
+        Integer rankNumber = bucketRankNumbers.get(bucket);
+        if (rankNumber != null && rankNumber > 0)
+        {
+            String currentText = progressLabels[index].getText();
+            if (!currentText.contains("Rank #"))
+            {
+                progressLabels[index].setText(currentText + " - Rank #" + rankNumber);
+            }
+        }
+    }
+    
+    private static class ProfileState
+    {
+        String name;
+        
+        ProfileState()
+        {
+            this.name = null;
         }
     }
 }
