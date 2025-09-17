@@ -49,6 +49,16 @@ public interface PvPLeaderboardConfig extends Config
 		return "overall";
 	}
 
+	@ConfigItem(
+		keyName = "showFightRankOverlay",
+		name = "Show Fight Rank Overlay",
+		description = "Show moveable overlay with player ranks during fights"
+	)
+	default boolean showFightRankOverlay()
+	{
+		return true;
+	}
+
 
 
 

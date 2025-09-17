@@ -44,6 +44,9 @@ public class PvPLeaderboardPlugin extends Plugin
 	@Inject
 	private RankOverlay rankOverlay;
 
+	@Inject
+	private FightRankOverlay fightRankOverlay;
+
 	private DashboardPanel dashboardPanel;
 	private NavigationButton navButton;
 	private long accountHash;
@@ -74,6 +77,7 @@ public class PvPLeaderboardPlugin extends Plugin
 
 		clientToolbar.addNavigation(navButton);
 		overlayManager.add(rankOverlay);
+		overlayManager.add(fightRankOverlay);
 		log.info("PvP Leaderboard started!");
 	}
 
@@ -82,6 +86,7 @@ public class PvPLeaderboardPlugin extends Plugin
 	{
 		clientToolbar.removeNavigation(navButton);
 		overlayManager.remove(rankOverlay);
+		overlayManager.remove(fightRankOverlay);
 		log.info("PvP Leaderboard stopped!");
 	}
 
@@ -460,5 +465,54 @@ public class PvPLeaderboardPlugin extends Plugin
 	RankCacheService provideRankCacheService()
 	{
 		return new RankCacheService();
+	}
+	
+	// Fight overlay methods
+	public boolean isInFight()
+	{
+		return inFight;
+	}
+	
+	public String getCurrentOpponentName()
+	{
+		return opponent;
+	}
+	
+	public String getPlayerRankDisplay()
+	{
+		String localPlayerName = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : null;
+		if (localPlayerName != null)
+		{
+			return getPlayerRank(localPlayerName);
+		}
+		return "Unranked";
+	}
+	
+	public String getOpponentRankDisplay()
+	{
+		if (opponent != null)
+		{
+			return getPlayerRank(opponent);
+		}
+		return "Unranked";
+	}
+	
+	public java.awt.Color getRankColor(String rankName)
+	{
+		if (rankName == null) return java.awt.Color.WHITE;
+		String baseName = rankName.split(" ")[0];
+		switch (baseName.toLowerCase())
+		{
+			case "bronze": return new java.awt.Color(184, 115, 51);
+			case "iron": return new java.awt.Color(192, 192, 192);
+			case "steel": return new java.awt.Color(154, 162, 166);
+			case "black": return new java.awt.Color(106, 106, 106);
+			case "mithril": return new java.awt.Color(59, 167, 214);
+			case "adamant": return new java.awt.Color(26, 139, 111);
+			case "rune": return new java.awt.Color(78, 159, 227);
+			case "dragon": return new java.awt.Color(229, 57, 53);
+			case "3rd": return new java.awt.Color(229, 193, 0);
+			default: return java.awt.Color.WHITE;
+		}
 	}
 }
